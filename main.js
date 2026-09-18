@@ -230,8 +230,12 @@ function createWindow() {
     }
   })
 
-  // 加载本地页面
-  win.loadFile('index.html')
+  // 开发时加载 Vite 空白页；打包后才走 dist
+  if (process.argv.includes('--dev')) {
+    win.loadURL('http://127.0.0.1:5173')
+  } else {
+    win.loadFile(path.join(__dirname, 'dist', 'index.html'))
+  }
 
   // F12 / Ctrl+Shift+I 打开或关闭开发者工具（Electron 默认不跟浏览器一样绑 F12）
   win.webContents.on('before-input-event', (_event, input) => {

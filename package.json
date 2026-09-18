@@ -4,15 +4,18 @@
   "description": "阿里云 OSS APK 批量上传与二维码工具",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "node scripts/dev.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "ali-oss": "^6.23.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "vue": "^3.5.43"
   },
   "devDependencies": {
-    "electron": "^44.4.1"
+    "@vitejs/plugin-vue": "^6.0.9",
+    "electron": "^44.4.1",
+    "vite": "^8.3.0"
   }
 }
