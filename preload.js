@@ -9,7 +9,11 @@ contextBridge.exposeInMainWorld('configApi', {
   /** 让用户选一个目录，指针写进 userData */
   pickDir: () => ipcRenderer.invoke('store:pickDir'),
   /** 丢掉自定义目录，回到默认位置 */
-  resetDir: () => ipcRenderer.invoke('store:resetDir')
+  resetDir: () => ipcRenderer.invoke('store:resetDir'),
+  /** 把当前表单导出成一份给别的电脑用的 json */
+  export: (data) => ipcRenderer.invoke('config:export', data),
+  /** 选一份导出的 json，把字段交回页面 */
+  import: () => ipcRenderer.invoke('config:import')
 })
 
 contextBridge.exposeInMainWorld('ossApi', {

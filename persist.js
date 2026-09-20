@@ -259,9 +259,96 @@ function resetDir() {
   return loadAll()
 }
 
+/** 文件名里不能带路径符号 */
+function fileTitle(name) {
+  /** 空名称用 oss，避免保存框没有默认文件名 */
+  const text = String(name || '').trim() || 'oss'
+  return text.replace(/[\\/:*?"<>|]/g, '_')
+}
+
+/** 收成给别的电脑用的配置，密钥是明文 */
+function portableFrom(data) {
+  return {
+    /** 文件格式版本 */
+    version: 1,
+    name: String((data && data.name) || '').trim(),
+    accessKeyId: String((data && data.accessKeyId) || '').trim(),
+    accessKeySecret: String((data && data.accessKeySecret) || ''),
+    region: String((data && data.region) || '').trim(),
+    endpoint: String((data && data.endpoint) || '').trim(),
+    bucket: String((data && data.bucket) || '').trim(),
+    prefix: cleanPrefix(data && data.prefix)
+  }
+}
+
+/** 读入别人导出的文件，字段不对就拒绝 */
+function portableRead(raw) {
+  // 不是对象就不可能是我们的配置
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('不是 OSS 配置文件')
+  }
+
+  /** 只留认识的字段 */
+  const next = portableFrom(raw)
+
+  // 连名称、密钥、桶都没有，多半选错了文件
+  if (!next.name && !next.accessKeyId && !next.bucket) {
+    throw new Error('不是 OSS 配置文件')
+  }
+
+  return next
+}
+
+/** 弹出保存框，把当前表单写成 json */
+async function exportConfig(data) {
+  /** 挂到当前窗口上 */
+  const win = BrowserWindow.getFocusedWindow()
+  /** 保存框参数 */
+  const options = {
+    title: '导出 OSS 配置',
+    defaultPath: `${fileTitle(data && data.name)}.json`,
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  }
+  /** 用户选的路径 */
+  const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+
+  // 取消就什么都不写
+  if (result.canceled || !result.filePath) {
+    return { canceled: true }
+  }
+
+  writeJson(result.filePath, portableFrom(data || {}))
+  return { canceled: false, file: result.filePath }
+}
+
+/** 弹出打开框，读一份导出的 json */
+async function importConfig() {
+  /** 挂到当前窗口上 */
+  const win = BrowserWindow.getFocusedWindow()
+  /** 打开框参数 */
+  const options = {
+    title: '导入 OSS 配置',
+    properties: ['openFile'],
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  }
+  /** 用户选的文件 */
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+
+  // 取消就保持表单原样
+  if (result.canceled || !result.filePaths[0]) {
+    return { canceled: true }
+  }
+
+  /** 文件内容 */
+  const raw = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'))
+  return { canceled: false, config: portableRead(raw) }
+}
+
 module.exports = {
   loadAll,
   saveStores,
   pickDir,
-  resetDir
+  resetDir,
+  exportConfig,
+  importConfig
 }

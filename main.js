@@ -62,6 +62,36 @@ function bindStore() {
   ipcMain.handle('store:save', (_event, data) => persist.saveStores(data))
   ipcMain.handle('store:pickDir', () => persist.pickDir())
   ipcMain.handle('store:resetDir', () => persist.resetDir())
+  ipcMain.handle('config:export', async (_event, data) => {
+    try {
+      /** 用户取消时没有文件路径 */
+      const result = await persist.exportConfig(data)
+
+      // 取消不是失败
+      if (result.canceled) {
+        return { ok: false, canceled: true }
+      }
+
+      return { ok: true, canceled: false, file: result.file }
+    } catch (err) {
+      return { ok: false, canceled: false, error: err && err.message ? err.message : '导出失败' }
+    }
+  })
+  ipcMain.handle('config:import', async () => {
+    try {
+      /** 读到的配置，或用户取消 */
+      const result = await persist.importConfig()
+
+      // 取消就不动表单
+      if (result.canceled) {
+        return { ok: false, canceled: true }
+      }
+
+      return { ok: true, canceled: false, config: result.config }
+    } catch (err) {
+      return { ok: false, canceled: false, error: err && err.message ? err.message : '导入失败' }
+    }
+  })
   ipcMain.handle('oss:find', async (_event, payload) => {
     /** 页面点中的那一条 */
     const hit = storeById(payload && payload.id)

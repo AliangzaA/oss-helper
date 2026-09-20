@@ -114,6 +114,12 @@
 
             <p v-if="diskError && page === 'form'" class="err">{{ diskError }}</p>
             <footer class="form-foot">
+              <div class="foot-side">
+                <n-button title="文件里包含 AccessKey，只交给要导入的那台电脑" @click="exportConfig">
+                  导出
+                </n-button>
+                <n-button @click="importConfig">导入</n-button>
+              </div>
               <n-button type="primary" @click="save">保存</n-button>
             </footer>
           </section>
@@ -669,6 +675,80 @@ async function useDefault() {
   }
 }
 
+/** 当前表单里要带走的字段，不含本机 id */
+function draftBody() {
+  return {
+    name: draft.name,
+    accessKeyId: draft.accessKeyId,
+    accessKeySecret: draft.accessKeySecret,
+    region: draft.region,
+    endpoint: draft.endpoint,
+    bucket: draft.bucket,
+    prefix: draft.prefix
+  }
+}
+
+/** 把当前表单导出成 json，给别的客户端导入 */
+async function exportConfig() {
+  // 浏览器预览没有保存框
+  if (!window.configApi || !window.configApi.export) {
+    diskError.value = '请在应用窗口里导出'
+    return
+  }
+
+  diskError.value = ''
+
+  try {
+    /** 取消时没有 error */
+    const res = await window.configApi.export(draftBody())
+
+    // 选错或写失败才提示
+    if (!res.canceled && !res.ok) {
+      diskError.value = res.error || '导出失败'
+    }
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '导出失败'
+  }
+}
+
+/** 选一份导出的 json，填进当前表单，不直接落盘 */
+async function importConfig() {
+  // 浏览器预览没有打开框
+  if (!window.configApi || !window.configApi.import) {
+    diskError.value = '请在应用窗口里导入'
+    return
+  }
+
+  diskError.value = ''
+
+  try {
+    /** 文件里的配置 */
+    const res = await window.configApi.import()
+
+    // 用户取消
+    if (res.canceled) {
+      return
+    }
+
+    // 文件不是我们导出的
+    if (!res.ok || !res.config) {
+      diskError.value = res.error || '导入失败'
+      return
+    }
+
+    draft.name = res.config.name
+    draft.accessKeyId = res.config.accessKeyId
+    draft.accessKeySecret = res.config.accessKeySecret
+    draft.region = res.config.region
+    draft.endpoint = res.config.endpoint
+    draft.bucket = res.config.bucket
+    draft.prefix = res.config.prefix
+    clearValid()
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '导入失败'
+  }
+}
+
 /** 保存：校验后先落盘，成功再回到主页 */
 async function save() {
   try {
@@ -1003,10 +1083,16 @@ onMounted(async () => {
 
 .form-foot {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
   margin-top: auto;
   padding-top: 12px;
+}
+
+.foot-side {
+  display: flex;
+  gap: 8px;
 }
 
 .settings {

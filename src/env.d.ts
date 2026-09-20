@@ -32,6 +32,26 @@ interface Window {
     save: (data: { active: string; stores: unknown[] }) => Promise<DiskState>
     pickDir: () => Promise<DiskState & { canceled?: boolean }>
     resetDir: () => Promise<DiskState>
+    export: (data: Record<string, string>) => Promise<{
+      ok: boolean
+      canceled?: boolean
+      error?: string
+      file?: string
+    }>
+    import: () => Promise<{
+      ok: boolean
+      canceled?: boolean
+      error?: string
+      config?: {
+        name: string
+        accessKeyId: string
+        accessKeySecret: string
+        region: string
+        endpoint: string
+        bucket: string
+        prefix: string
+      }
+    }>
   }
   /** 用已保存配置查找 OSS 对象 */
   ossApi?: {
