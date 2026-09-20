@@ -9,7 +9,7 @@
     "start": "node scripts/dev.js",
     "build": "vite build && electron-builder --win nsis",
     "build:dir": "vite build && electron-builder --win dir",
-    "build:mac": "node node_modules/electron/install.js && vite build && electron-builder --mac --arm64"
+    "build:mac": "node node_modules/electron/install.js && vite build && electron-builder --mac --arm64 --publish never"
   },
   "dependencies": {
     "ali-oss": "^6.23.0"
