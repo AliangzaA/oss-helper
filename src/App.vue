@@ -18,6 +18,7 @@
               :title="item.name"
               type="button"
               @click="pick(item.id)"
+              @contextmenu.prevent="openMenu($event, item.id)"
             >
               {{ mark(item.name) }}
             </button>
@@ -41,6 +42,17 @@
             </svg>
           </button>
         </aside>
+
+        <n-dropdown
+          trigger="manual"
+          placement="bottom-start"
+          :show="menuShow"
+          :x="menuX"
+          :y="menuY"
+          :options="menuOptions"
+          @select="onMenu"
+          @clickoutside="menuShow = false"
+        />
 
         <!-- 右侧：主页、配置页、存储位置在这里切换 -->
         <main class="stage">
@@ -212,6 +224,25 @@ const diskError = ref('')
 
 /** 配置页标题随新建 / 编辑切换 */
 const title = computed(() => (editId.value ? '编辑 OSS' : '添加 OSS'))
+
+/** 右键菜单是否打开 */
+const menuShow = ref(false)
+
+/** 右键菜单的横坐标 */
+const menuX = ref(0)
+
+/** 右键菜单的纵坐标 */
+const menuY = ref(0)
+
+/** 右键点中的存储 id */
+const menuId = ref('')
+
+/** 右键菜单项，带上名称避免删错 */
+const menuOptions = computed(() => {
+  /** 点中的那条 */
+  const item = stores.value.find((row) => row.id === menuId.value)
+  return [{ label: item ? `删除 ${item.name}` : '删除', key: 'drop' }]
+})
 
 /** 当前选中的那条配置 */
 const current = computed(() => stores.value.find((item) => item.id === active.value) || null)
@@ -433,6 +464,68 @@ function up() {
   place.value = parentPlace(place.value, current.value?.prefix || '')
   keyword.value = ''
   runFind()
+}
+
+/** 右键圆点：在指针处弹出删除 */
+function openMenu(event, id) {
+  menuId.value = id
+  menuX.value = event.clientX
+  menuY.value = event.clientY
+  // 先关掉再开，否则第二次右键位置不更新
+  menuShow.value = false
+  nextTick(() => {
+    menuShow.value = true
+  })
+}
+
+/** 点了菜单里的删除 */
+function onMenu(key) {
+  menuShow.value = false
+
+  // 目前只有删除一项
+  if (key === 'drop') {
+    dropStore(menuId.value)
+  }
+}
+
+/** 从列表和磁盘去掉这条配置，不删桶里的文件 */
+async function dropStore(id) {
+  /** 删掉之后剩下的 */
+  const list = stores.value.filter((item) => item.id !== id)
+  /** 删的是当前项就改选旁边那条 */
+  const nextActive = active.value === id ? list[0]?.id || '' : active.value
+
+  try {
+    /** 没写进磁盘就不要改页面上的选中项 */
+    const wrote = await writeDisk(nextActive, list)
+
+    // 浏览器预览写不了，writeDisk 自己会提示
+    if (!wrote) {
+      return
+    }
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '删除失败'
+    return
+  }
+
+  // 正在编辑被删的那条，回到主页，避免把已删配置又存回去
+  if (page.value === 'form' && editId.value === id) {
+    page.value = 'home'
+  }
+
+  keyword.value = ''
+  hits.value = []
+  truncated.value = false
+  findError.value = ''
+
+  // 还有别的配置就列它的默认目录
+  if (current.value) {
+    place.value = current.value.prefix || ''
+    runFind()
+    return
+  }
+
+  place.value = ''
 }
 
 /** 点左侧圆点：切存储，并离开配置页或设置页 */
