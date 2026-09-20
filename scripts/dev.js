@@ -28,6 +28,9 @@ function stopVite(code) {
   process.exit(code ?? 0)
 }
 
+/** 只提示一次，避免服务没起来时每 300ms 刷一行 */
+let toldWait = false
+
 /** 等首页能访问，再打开窗口 */
 function waitReady() {
   /** 探测开发服务 */
@@ -39,6 +42,8 @@ function waitReady() {
       return
     }
 
+    console.log('页面已就绪，正在打开窗口')
+
     electron = spawn(
       process.execPath,
       [path.join(root, 'node_modules', 'electron', 'cli.js'), root, '--dev'],
@@ -48,13 +53,23 @@ function waitReady() {
       }
     )
 
+    electron.on('error', (err) => {
+      console.error('窗口启动失败:', err && err.message ? err.message : err)
+      stopVite(1)
+    })
+
     electron.on('exit', (code) => {
       stopVite(code)
     })
   })
 
   req.on('error', () => {
-    // 服务还没起来
+    // 服务还没起来，先说一声再继续等
+    if (!toldWait) {
+      toldWait = true
+      console.log('等待页面服务...')
+    }
+
     setTimeout(waitReady, 300)
   })
 }
