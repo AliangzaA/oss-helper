@@ -1,0 +1,18 @@
+/* 全局色板与字号，页面和 Naive 主题都从这里对齐 */
+:root {
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --rail: #1c2430;
+  --dot: #2c394c;
+  --text: #e7ecf3;
+  --muted: #8b9bb4;
+  --accent: #3d8bfd;
+  --accent-hover: #5a9dff;
+  --accent-press: #2f74d6;
+  --line: #2a3648;
+  --danger: #d96b6b;
+  --ok: #3ecf8e;
+  --input: #121a26;
+  --plus: #ff7a3d;
+  --font: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}

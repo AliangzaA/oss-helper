@@ -1,9 +1,28 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 
 // 渲染层：开发走 5173，打包输出到 dist
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue(),
+    // 按需注入 useMessage 等，页面里不用手写 import
+    AutoImport({
+      dts: 'src/auto-imports.d.ts',
+      imports: [
+        {
+          'naive-ui': ['useDialog', 'useMessage', 'useNotification', 'useLoadingBar']
+        }
+      ]
+    }),
+    // 模板里写 n-button 就会自动引入，不用每个页面 import
+    Components({
+      dts: 'src/components.d.ts',
+      resolvers: [NaiveUiResolver()]
+    })
+  ],
   // Electron 用 file:// 加载打包结果时，资源必须用相对路径
   base: './',
   server: {
