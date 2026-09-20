@@ -659,11 +659,169 @@ async function rename(config, item, name) {
   return renameFile(client, key, nextName)
 }
 
+/** 文件名对应的图片类型，不是图片就空 */
+function logoMime(name) {
+  /** 小写扩展名 */
+  const ext = path.extname(String(name || '')).toLowerCase()
+
+  // PNG
+  if (ext === '.png') {
+    return 'image/png'
+  }
+
+  // JPG
+  if (ext === '.jpg' || ext === '.jpeg') {
+    return 'image/jpeg'
+  }
+
+  // GIF
+  if (ext === '.gif') {
+    return 'image/gif'
+  }
+
+  // WebP
+  if (ext === '.webp') {
+    return 'image/webp'
+  }
+
+  return ''
+}
+
+/**
+ * Logo 目录：已在默认目录下就原样用，否则接到默认目录后面
+ * 填 logo、默认目录是 apk 时，实际去 apk/logo/
+ * @param {object} config
+ */
+function logoHead(config) {
+  /** 配置里的 Logo 目录，保存时已经补过尾斜杠 */
+  let dir = String((config && config.logoDir) || '')
+
+  // 旧数据可能没尾斜杠，列目录会对不上
+  if (dir && !dir.endsWith('/')) {
+    dir += '/'
+  }
+
+  /** 默认目录 */
+  const root = String((config && config.prefix) || '')
+
+  // 没填 Logo 目录
+  if (!dir) {
+    return ''
+  }
+
+  // 没设默认目录，或已经从桶根写到默认目录里面
+  if (!root || dir === root || dir.startsWith(root)) {
+    return dir
+  }
+
+  return `${root}${dir}`
+}
+
+/**
+ * 列出桶里 Logo 目录这一层的图片，收成页面能显示的 data URL
+ * @param {object} config
+ */
+async function listLogos(config) {
+  /** 真正去列的前缀 */
+  const head = logoHead(config)
+
+  // 没配目录就没有 Logo
+  if (!head) {
+    return { files: [] }
+  }
+
+  /** 客户端 */
+  const client = openClient(config)
+  /** 页面要的缩略图 */
+  const files = []
+  /** 翻页游标 */
+  let token = null
+
+  do {
+    /** 不加 delimiter，避免没尾斜杠时文件被收成子目录 */
+    const query = {
+      prefix: head,
+      'max-keys': 100
+    }
+
+    // 续页
+    if (token) {
+      query['continuation-token'] = token
+    }
+
+    /** 本页 */
+    const page = await client.listV2(query)
+    token = page.nextContinuationToken || null
+
+    for (const obj of page.objects || []) {
+      // 目录占位不要
+      if (!obj.name || obj.name === head || obj.name.endsWith('/')) {
+        continue
+      }
+
+      // 必须还在 Logo 目录里
+      if (!obj.name.startsWith(head)) {
+        continue
+      }
+
+      /** 这一层的文件名 */
+      const name = showName(obj.name, head)
+
+      // 子路径或空名不要
+      if (!name || name.includes('/')) {
+        continue
+      }
+
+      /** 能贴进二维码的类型 */
+      const mime = logoMime(name)
+
+      // 不是图片
+      if (!mime) {
+        continue
+      }
+
+      // 太大的当海报
+      if ((obj.size || 0) > 2 * 1024 * 1024) {
+        continue
+      }
+
+      try {
+        /** 对象内容 */
+        const got = await client.get(obj.name)
+        /** 文件字节 */
+        const buf = got && got.content
+
+        // SDK 偶发给空
+        if (!buf) {
+          continue
+        }
+
+        files.push({
+          name,
+          src: `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
+        })
+      } catch {
+        // 单张读失败就跳过，别把整个列表打没
+        continue
+      }
+
+      // 目录里图太多就停，避免把窗口拖死
+      if (files.length >= 40) {
+        break
+      }
+    }
+  } while (token && files.length < 40)
+
+  files.sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  return { files }
+}
+
 module.exports = {
   find,
   ensureDir,
   upload,
   mkdir,
   removeItems,
-  rename
+  rename,
+  listLogos
 }

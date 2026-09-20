@@ -97,6 +97,21 @@ function bindStore() {
       return { ok: false, canceled: false, error: err && err.message ? err.message : '导入失败' }
     }
   })
+  ipcMain.handle('file:saveImage', async (_event, payload) => {
+    try {
+      /** 保存框结果 */
+      const result = await persist.saveImage(payload && payload.name, payload && payload.dataUrl)
+
+      // 取消不是失败
+      if (result.canceled) {
+        return { ok: false, canceled: true }
+      }
+
+      return { ok: true, canceled: false, file: result.file }
+    } catch (err) {
+      return { ok: false, canceled: false, error: err && err.message ? err.message : '保存失败' }
+    }
+  })
   ipcMain.handle('oss:find', async (_event, payload) => {
     /** 页面点中的那一条 */
     const hit = storeById(payload && payload.id)
@@ -294,6 +309,27 @@ function bindStore() {
       return { ok: true, error: '', ...data }
     } catch (err) {
       return { ok: false, error: err && err.message ? err.message : '改名失败' }
+    }
+  })
+  ipcMain.handle('oss:logos', async (_event, payload) => {
+    /** 当前这条配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 没有配置就读不了 Logo
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置', files: [] }
+    }
+
+    try {
+      /** 桶里这一层的图片 */
+      const data = await oss.listLogos(hit)
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : '读取 Logo 失败',
+        files: []
+      }
     }
   })
 }

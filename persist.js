@@ -94,6 +94,19 @@ function cleanPrefix(prefix) {
 
   return text
 }
+
+/** 公开访问域名只留主机名，不要协议和路径 */
+function cleanDomain(raw) {
+  /** 去掉空白和协议 */
+  let text = String(raw || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+
+  // 只取主机，后面的路径丢掉
+  text = text.split('/')[0].trim()
+
+  return text
+}
 /** 密钥加密后再落盘，空密钥不调用系统加密 */
 function seal(text) {
   /** 去掉首尾空白后的密钥 */
@@ -140,6 +153,10 @@ function unpack(raw) {
     region: String(raw.region || ''),
     /** 自定义访问域名 */
     endpoint: String(raw.endpoint || ''),
+    /** 公开下载用的绑定域名，不是 Endpoint */
+    domain: cleanDomain(raw.domain),
+    /** 桶里放 Logo 的目录，从桶根算 */
+    logoDir: cleanPrefix(raw.logoDir),
     /** 文件列表起始目录，空就是桶根 */
     prefix: cleanPrefix(raw.prefix),
     /** 桶名 */
@@ -156,6 +173,8 @@ function pack(raw) {
     accessKeySecret: seal(raw.accessKeySecret),
     region: String(raw.region || '').trim(),
     endpoint: String(raw.endpoint || '').trim(),
+    domain: cleanDomain(raw.domain),
+    logoDir: cleanPrefix(raw.logoDir),
     prefix: cleanPrefix(raw.prefix),
     bucket: String(raw.bucket || '').trim()
   }
@@ -276,6 +295,8 @@ function portableFrom(data) {
     accessKeySecret: String((data && data.accessKeySecret) || ''),
     region: String((data && data.region) || '').trim(),
     endpoint: String((data && data.endpoint) || '').trim(),
+    domain: cleanDomain(data && data.domain),
+    logoDir: cleanPrefix(data && data.logoDir),
     bucket: String((data && data.bucket) || '').trim(),
     prefix: cleanPrefix(data && data.prefix)
   }
@@ -344,11 +365,44 @@ async function importConfig() {
   return { canceled: false, config: portableRead(raw) }
 }
 
+/** 把二维码 PNG 存到用户选的位置 */
+async function saveImage(name, dataUrl) {
+  /** 挂到当前窗口上 */
+  const win = BrowserWindow.getFocusedWindow()
+  /** 保存框参数 */
+  const options = {
+    title: '下载二维码',
+    defaultPath: `${fileTitle(name)}.png`,
+    filters: [{ name: 'PNG', extensions: ['png'] }]
+  }
+  /** 用户选的路径 */
+  const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+
+  // 取消就不写
+  if (result.canceled || !result.filePath) {
+    return { canceled: true }
+  }
+
+  /** 页面画好的图 */
+  const text = String(dataUrl || '')
+  /** 只收 PNG 的 base64 */
+  const match = text.match(/^data:image\/png;base64,(.+)$/)
+
+  // 还没画出图，或格式不对
+  if (!match) {
+    throw new Error('没有可保存的二维码')
+  }
+
+  fs.writeFileSync(result.filePath, Buffer.from(match[1], 'base64'))
+  return { canceled: false, file: result.filePath }
+}
+
 module.exports = {
   loadAll,
   saveStores,
   pickDir,
   resetDir,
   exportConfig,
-  importConfig
+  importConfig,
+  saveImage
 }

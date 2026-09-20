@@ -39,5 +39,9 @@ contextBridge.exposeInMainWorld('ossApi', {
   /** 删除选中的文件或文件夹 */
   remove: (data) => ipcRenderer.invoke('oss:remove', data),
   /** 给选中的一项改名 */
-  rename: (data) => ipcRenderer.invoke('oss:rename', data)
+  rename: (data) => ipcRenderer.invoke('oss:rename', data),
+  /** 列出桶里 Logo 目录的图片 */
+  logos: (data) => ipcRenderer.invoke('oss:logos', data),
+  /** 把当前二维码存成 png */
+  saveQr: (data) => ipcRenderer.invoke('file:saveImage', data)
 })

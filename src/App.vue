@@ -110,6 +110,12 @@
               <n-form-item label="默认目录（可选）" path="prefix">
                 <n-input v-model:value="draft.prefix" placeholder="apk/release/，不填就是桶根" />
               </n-form-item>
+              <n-form-item label="自定义域名（可选）" path="domain">
+                <n-input v-model:value="draft.domain" placeholder="dlyepaiapp.com，APK 下载用这个" />
+              </n-form-item>
+              <n-form-item label="Logo 目录（可选）" path="logoDir">
+                <n-input v-model:value="draft.logoDir" placeholder="apk/logo/，也可只填 logo（相对默认目录）" />
+              </n-form-item>
             </n-form>
 
             <p v-if="diskError && page === 'form'" class="err">{{ diskError }}</p>
@@ -234,6 +240,15 @@
                   <span class="hit-cell">{{ formatTime(item.time) }}</span>
                   <span class="hit-ops">
                     <button class="hit-act" type="button" :disabled="working" @click="askRenameOne(item)">改名</button>
+                    <button
+                      v-if="item.type === 'file'"
+                      class="hit-act"
+                      type="button"
+                      :disabled="working"
+                      @click="askCode(item)"
+                    >
+                      二维码
+                    </button>
                     <button class="hit-act danger" type="button" :disabled="working" @click="askRemoveOne(item)">删除</button>
                   </span>
                 </div>
@@ -303,6 +318,47 @@
         </template>
       </n-modal>
 
+      <!-- 文件公开地址和二维码，外网域名或自定义域名二选一 -->
+      <n-modal v-model:show="codeShow" preset="card" title="二维码" style="width: 420px">
+        <n-radio-group v-model:value="codeKind" class="code-kind" name="codeKind">
+          <n-radio value="oss">外网域名</n-radio>
+          <n-radio value="custom">自定义域名</n-radio>
+        </n-radio-group>
+        <p v-if="codeHint" class="err">{{ codeHint }}</p>
+        <p v-else-if="codeNote" class="hint where">{{ codeNote }}</p>
+        <p v-if="codeUrl" class="code-url">{{ codeUrl }}</p>
+        <p v-if="codeLogoErr" class="err">{{ codeLogoErr }}</p>
+        <div v-else-if="codeLogos.length" class="logo-pick">
+          <p class="hint">中间 Logo</p>
+          <div class="logo-list">
+            <button class="logo-item" :class="{ on: !codeLogo }" type="button" @click="codeLogo = ''">无</button>
+            <button
+              v-for="logo in codeLogos"
+              :key="logo.name"
+              class="logo-item"
+              :class="{ on: codeLogo === logo.name }"
+              :title="logo.name"
+              type="button"
+              @click="codeLogo = logo.name"
+            >
+              <img :src="logo.src" :alt="logo.name" />
+            </button>
+          </div>
+        </div>
+        <p v-else-if="current && current.logoDir" class="hint where">这个目录里没有 png / jpg / webp 图片</p>
+        <p v-else class="hint where">要在二维码中间放 Logo，先在 OSS 配置里填桶中的 Logo 目录</p>
+        <img v-if="codeSrc" class="code-img" :src="codeSrc" alt="二维码" />
+        <template #footer>
+          <n-space justify="end">
+            <n-button :disabled="!codeUrl" @click="copyCode">{{ codeCopied ? '已复制' : '复制链接' }}</n-button>
+            <n-button :disabled="!codeSrc" :loading="codeSaving" @click="saveCode">
+              {{ codeSaved ? '已保存' : '下载二维码' }}
+            </n-button>
+            <n-button type="primary" @click="codeShow = false">关闭</n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
       <!-- 删除前确认，文件夹会连带里面的文件 -->
       <n-modal v-model:show="dropShow" preset="card" title="删除" style="width: 380px">
         <p class="hint">删除选中的 {{ pickedItems.length }} 项。文件夹会连同里面的文件一起删，不能恢复。</p>
@@ -318,7 +374,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+/** 把文件 URL 画成二维码 */
+import QRCode from 'qrcode'
 /** Naive 中文包，按钮占位符等走中文 */
 import { dateZhCN, zhCN } from 'naive-ui'
 import { overrides, theme } from './theme'
@@ -410,6 +468,42 @@ const nameKind = ref('mkdir')
 
 /** 删除确认是否打开 */
 const dropShow = ref(false)
+
+/** 二维码弹窗是否打开 */
+const codeShow = ref(false)
+
+/** oss 外网域名，custom 绑定域名 */
+const codeKind = ref('oss')
+
+/** 正在生成二维码的文件 */
+const codeItem = ref(null)
+
+/** 画出来的二维码 */
+const codeSrc = ref('')
+
+/** 当前选中的 Logo 文件名，空就是不贴 */
+const codeLogo = ref('')
+
+/** Logo 目录里读到的图片 */
+const codeLogos = ref([])
+
+/** 读 Logo 失败的原因 */
+const codeLogoErr = ref('')
+
+/** 复制成功的短暂提示 */
+const codeCopied = ref(false)
+
+/** 正在弹出保存框 */
+const codeSaving = ref(false)
+
+/** 保存成功的短暂提示 */
+const codeSaved = ref(false)
+
+/** 复制提示计时 */
+let copyTimer = null
+
+/** 保存提示计时 */
+let saveTimer = null
 
 /** 上传弹窗是否打开 */
 const upShow = ref(false)
@@ -564,6 +658,10 @@ function emptyItem(id, name) {
     region: '',
     /** 自定义访问域名，有它就可以不填 Region */
     endpoint: '',
+    /** 公开下载用的绑定域名 */
+    domain: '',
+    /** 桶里放 Logo 的目录，从桶根算 */
+    logoDir: '',
     /** 打开文件列表时的起始目录，空就是桶根 */
     prefix: '',
     /** 桶名 */
@@ -1088,6 +1186,350 @@ function askRemoveOne(item) {
   askRemove()
 }
 
+/** 外网域名用的 region，没填就从 Endpoint 里拆 */
+function regionOf(config) {
+  /** 配置里写的地域 */
+  const region = String((config && config.region) || '').trim()
+
+  // 填了就直接用
+  if (region) {
+    return region
+  }
+
+  /** Endpoint 的主机 */
+  const host = String((config && config.endpoint) || '')
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+  /** oss-cn-hangzhou.aliyuncs.com */
+  const plain = host.match(/^(oss-[a-z0-9-]+)\.aliyuncs\.com$/i)
+
+  // 普通 Endpoint
+  if (plain) {
+    return plain[1]
+  }
+
+  /** bucket.oss-cn-hangzhou.aliyuncs.com */
+  const virtual = host.match(/\.((oss-[a-z0-9-]+)\.aliyuncs\.com)$/i)
+
+  // 虚拟主机写法
+  if (virtual) {
+    return virtual[2]
+  }
+
+  return ''
+}
+
+/** 对象 key 编进 URL 路径，中文不能裸放 */
+function encodeKey(key) {
+  return String(key || '')
+    .replace(/^\/+/, '')
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+}
+
+/** 公开访问地址 */
+function fileUrl(config, key, kind) {
+  /** 编码后的对象路径 */
+  const path = encodeKey(key)
+
+  // 自定义域名走绑定的主机
+  if (kind === 'custom') {
+    /** 配置里的绑定域名 */
+    const host = String((config && config.domain) || '').trim()
+
+    // 没填就拼不出
+    if (!host) {
+      return ''
+    }
+
+    return `https://${host}/${path}`
+  }
+
+  /** 桶名 */
+  const bucket = String((config && config.bucket) || '').trim()
+  /** 地域 */
+  const region = regionOf(config)
+
+  // 默认域名必须有桶和地域
+  if (!bucket || !region) {
+    return ''
+  }
+
+  return `https://${bucket}.${region}.aliyuncs.com/${path}`
+}
+
+/** 当前弹窗里的文件地址 */
+const codeUrl = computed(() => {
+  // 还没选文件或没选存储
+  if (!codeItem.value || !current.value) {
+    return ''
+  }
+
+  return fileUrl(current.value, codeItem.value.key, codeKind.value)
+})
+
+/** 拼不出地址时的原因 */
+const codeHint = computed(() => {
+  // 自定义域名没填
+  if (codeKind.value === 'custom' && !String(current.value?.domain || '').trim()) {
+    return '先在 OSS 配置里填自定义域名'
+  }
+
+  // 外网域名拼不出来
+  if (codeKind.value === 'oss' && !codeUrl.value) {
+    return '外网域名需要 Bucket 和 Region'
+  }
+
+  return ''
+})
+
+/** APK 用默认域名时的提醒 */
+const codeNote = computed(() => {
+  /** 是不是安装包 */
+  const apk = String(codeItem.value?.name || '').toLowerCase().endsWith('.apk')
+
+  // APK 用默认域名经常被拦
+  if (apk && codeKind.value === 'oss') {
+    return 'APK 用阿里云默认域名经常打不开，建议改用自定义域名'
+  }
+
+  return ''
+})
+
+/** 打开二维码，安装包默认走自定义域名 */
+function askCode(item) {
+  // 目录没有公开下载地址
+  if (!item || item.type === 'folder') {
+    return
+  }
+
+  codeItem.value = item
+  codeCopied.value = false
+  codeSaved.value = false
+  /** 安装包优先用绑定域名 */
+  const apk = String(item.name || '').toLowerCase().endsWith('.apk')
+
+  // 填过自定义域名的 APK 直接选它
+  if (apk && String(current.value?.domain || '').trim()) {
+    codeKind.value = 'custom'
+  } else {
+    codeKind.value = 'oss'
+  }
+
+  codeShow.value = true
+  loadLogos()
+}
+
+/** 读当前配置的 Logo 目录 */
+async function loadLogos() {
+  codeLogoErr.value = ''
+
+  // 没选中存储
+  if (!current.value) {
+    codeLogos.value = []
+    return
+  }
+
+  // 预加载没带上这条接口，多半没重启
+  if (!window.ossApi || !window.ossApi.logos) {
+    codeLogos.value = []
+    codeLogoErr.value = '请完全退出后重新打开应用'
+    return
+  }
+
+  try {
+    /** 主进程按配置里的 Logo 目录去桶里拉图 */
+    const res = await window.ossApi.logos({ id: current.value.id })
+
+    // 目录不在或没权限
+    if (!res.ok) {
+      codeLogos.value = []
+      codeLogoErr.value = res.error || '读取 Logo 失败'
+      return
+    }
+
+    codeLogos.value = res.files || []
+
+    // 上次选的文件已经不在了
+    if (!codeLogos.value.some((item) => item.name === codeLogo.value)) {
+      codeLogo.value = ''
+    }
+  } catch (err) {
+    codeLogos.value = []
+    codeLogoErr.value = err && err.message ? err.message : '读取 Logo 失败'
+  }
+
+  await drawCode()
+}
+
+/** 把 data URL 载成图片，用来叠 Logo */
+function loadImg(src) {
+  return new Promise((resolve, reject) => {
+    /** 画布用的位图 */
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('图片读失败'))
+    img.src = src
+  })
+}
+
+/** 二维码中间留白再贴 Logo，周围留一圈白边 */
+async function stampLogo(qrSrc, logoSrc) {
+  /** 原二维码 */
+  const qr = await loadImg(qrSrc)
+  /** 选中的 Logo */
+  const logo = await loadImg(logoSrc)
+  /** 叠完的画布 */
+  const canvas = document.createElement('canvas')
+  canvas.width = qr.width
+  canvas.height = qr.height
+  /** 2d 画笔 */
+  const ctx = canvas.getContext('2d')
+
+  // 画布不可用就退回原图
+  if (!ctx) {
+    return qrSrc
+  }
+
+  ctx.drawImage(qr, 0, 0)
+  /** Logo 大约占二维码边长的五分之一 */
+  const size = Math.round(qr.width * 0.2)
+  /** 白边，避免黑块贴到 Logo */
+  const pad = Math.round(size * 0.14)
+  /** 白底方块边长 */
+  const box = size + pad * 2
+  /** 水平居中 */
+  const x = (qr.width - box) / 2
+  /** 垂直居中 */
+  const y = (qr.height - box) / 2
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(x, y, box, box)
+  ctx.drawImage(logo, x + pad, y + pad, size, size)
+  return canvas.toDataURL('image/png')
+}
+
+/** 把当前地址画成二维码，有 Logo 就叠到中间 */
+async function drawCode() {
+  /** 要画进二维码的地址 */
+  const url = codeUrl.value
+
+  // 地址无效就清空图
+  if (!url) {
+    codeSrc.value = ''
+    return
+  }
+
+  try {
+    /** 先画完整二维码，容错开高一点，中间挖掉还能扫 */
+    const base = await QRCode.toDataURL(url, {
+      width: 280,
+      margin: 1,
+      errorCorrectionLevel: 'H',
+      color: { dark: '#0f1419', light: '#ffffff' }
+    })
+    /** 选中的那张 Logo */
+    const logo = codeLogos.value.find((item) => item.name === codeLogo.value)
+
+    // 没选 Logo 就用原图
+    if (!logo) {
+      codeSrc.value = base
+      return
+    }
+
+    codeSrc.value = await stampLogo(base, logo.src)
+  } catch {
+    codeSrc.value = ''
+  }
+}
+
+/** 地址或 Logo 变了就重画 */
+watch([codeUrl, codeLogo], () => {
+  drawCode()
+})
+
+/** 复制当前链接 */
+async function copyCode() {
+  // 没有地址就不用写剪贴板
+  if (!codeUrl.value) {
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(codeUrl.value)
+    codeCopied.value = true
+
+    // 清掉上一次的计时
+    if (copyTimer) {
+      clearTimeout(copyTimer)
+    }
+
+    copyTimer = setTimeout(() => {
+      codeCopied.value = false
+    }, 1500)
+  } catch {
+    codeCopied.value = false
+  }
+}
+
+/** 下载当前这张二维码，中间有 Logo 的也一起带上 */
+async function saveCode() {
+  // 还没画出图
+  if (!codeSrc.value) {
+    return
+  }
+
+  // 浏览器预览没有保存框
+  if (!window.ossApi || !window.ossApi.saveQr) {
+    codeLogoErr.value = '请在应用窗口里下载'
+    return
+  }
+
+  /** 文件名用对象名，去掉后缀再加 -qr */
+  const raw = String((codeItem.value && codeItem.value.name) || 'qr')
+  /** 最后一个点，用来去掉原后缀 */
+  const dot = raw.lastIndexOf('.')
+  /** 保存框里的默认名 */
+  const name = `${dot > 0 ? raw.slice(0, dot) : raw}-qr`
+
+  codeSaving.value = true
+
+  try {
+    /** 主进程弹保存框并写盘 */
+    const res = await window.ossApi.saveQr({
+      name,
+      dataUrl: codeSrc.value
+    })
+
+    // 用户取消
+    if (!res || res.canceled) {
+      return
+    }
+
+    // 写失败
+    if (!res.ok) {
+      codeLogoErr.value = res.error || '保存失败'
+      return
+    }
+
+    codeSaved.value = true
+
+    // 清掉上一次的计时
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+    }
+
+    saveTimer = setTimeout(() => {
+      codeSaved.value = false
+    }, 1500)
+  } catch (err) {
+    codeLogoErr.value = err && err.message ? err.message : '保存失败'
+  } finally {
+    codeSaving.value = false
+  }
+}
+
 /** 删除勾选的文件和文件夹 */
 async function removePicked() {
   // 没选中存储
@@ -1345,6 +1787,8 @@ function draftBody() {
     accessKeySecret: draft.accessKeySecret,
     region: draft.region,
     endpoint: draft.endpoint,
+    domain: draft.domain,
+    logoDir: draft.logoDir,
     bucket: draft.bucket,
     prefix: draft.prefix
   }
@@ -1403,6 +1847,8 @@ async function importConfig() {
     draft.accessKeySecret = res.config.accessKeySecret
     draft.region = res.config.region
     draft.endpoint = res.config.endpoint
+    draft.domain = res.config.domain || ''
+    draft.logoDir = res.config.logoDir || ''
     draft.bucket = res.config.bucket
     draft.prefix = res.config.prefix
     clearValid()
@@ -1512,6 +1958,18 @@ onUnmounted(() => {
   if (offProgress) {
     offProgress()
     offProgress = null
+  }
+
+  // 复制提示的计时也清掉
+  if (copyTimer) {
+    clearTimeout(copyTimer)
+    copyTimer = null
+  }
+
+  // 保存提示的计时也清掉
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
   }
 })
 </script>
@@ -1694,7 +2152,7 @@ onUnmounted(() => {
 
 .hit {
   display: grid;
-  grid-template-columns: 22px minmax(140px, 1.6fr) 88px 88px 140px 92px;
+  grid-template-columns: 22px minmax(120px, 1.4fr) 80px 80px 130px 148px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -1934,6 +2392,69 @@ onUnmounted(() => {
   margin: 4px 0 0;
   color: var(--danger);
   font-size: 12px;
+}
+
+.code-url {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.code-img {
+  display: block;
+  width: 280px;
+  height: 280px;
+  margin: 14px auto 0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.logo-pick {
+  margin-top: 12px;
+}
+
+.logo-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.logo-item {
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.logo-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.logo-item.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.code-kind {
+  display: flex;
+  gap: 16px;
 }
 
 .form-page {

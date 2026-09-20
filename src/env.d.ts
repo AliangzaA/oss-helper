@@ -20,6 +20,8 @@ interface DiskState {
     accessKeySecret: string
     region: string
     endpoint: string
+    domain: string
+    logoDir: string
     prefix: string
     bucket: string
   }>
@@ -48,6 +50,8 @@ interface Window {
         accessKeySecret: string
         region: string
         endpoint: string
+        domain: string
+        logoDir: string
         bucket: string
         prefix: string
       }
@@ -96,5 +100,16 @@ interface Window {
       item: { type: string; key: string }
       name: string
     }) => Promise<{ ok: boolean; error?: string }>
+    logos: (data: { id: string }) => Promise<{
+      ok: boolean
+      error?: string
+      files: Array<{ name: string; src: string }>
+    }>
+    saveQr: (data: { name: string; dataUrl: string }) => Promise<{
+      ok: boolean
+      canceled?: boolean
+      error?: string
+      file?: string
+    }>
   }
 }
