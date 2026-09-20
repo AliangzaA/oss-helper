@@ -2,6 +2,7 @@
 const { app, BrowserWindow, Menu, ipcMain } = require('electron')
 const path = require('path')
 const persist = require('./persist')
+const oss = require('./oss')
 
 /** 主窗口引用，避免被垃圾回收提前关掉 */
 let win = null
@@ -36,9 +37,23 @@ function createWindow() {
   // 开发时加载 Vite；打包后才走 dist
   if (process.argv.includes('--dev')) {
     win.loadURL('http://127.0.0.1:5173')
+    // 菜单被清掉后，系统不再带调试快捷键，开发时用 F12 自己开
+    win.webContents.on('before-input-event', (_event, input) => {
+      // 只认按下，避免松开再关一次
+      if (input.type === 'keyDown' && input.key === 'F12') {
+        win.webContents.toggleDevTools()
+      }
+    })
   } else {
     win.loadFile(path.join(__dirname, 'dist', 'index.html'))
   }
+}
+
+/** 按 id 从磁盘取出一条已解密的配置，没有就 null */
+function storeById(id) {
+  /** 当前目录里的全部配置 */
+  const all = persist.loadAll()
+  return all.stores.find((item) => item.id === String(id || '')) || null
 }
 
 /** 页面来读配置、写配置、改目录，都走这里 */
@@ -47,6 +62,48 @@ function bindStore() {
   ipcMain.handle('store:save', (_event, data) => persist.saveStores(data))
   ipcMain.handle('store:pickDir', () => persist.pickDir())
   ipcMain.handle('store:resetDir', () => persist.resetDir())
+  ipcMain.handle('oss:find', async (_event, payload) => {
+    /** 页面点中的那一条 */
+    const hit = storeById(payload && payload.id)
+
+    // 列表里没有，多半是刚删掉或 id 不对
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置', items: [] }
+    }
+
+    try {
+      /** 查找结果 */
+      const data = await oss.find(hit, payload && payload.place, payload && payload.keyword)
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : '查找失败',
+        items: []
+      }
+    }
+  })
+  ipcMain.handle('oss:ensure', async (_event, payload) => {
+    /** 刚保存的那一条 */
+    const hit = storeById(payload && payload.id)
+
+    // 磁盘上还没有这条，就先别连 OSS
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置', created: false }
+    }
+
+    try {
+      /** 没有目录时是否新建了 */
+      const data = await oss.ensureDir(hit)
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : '创建目录失败',
+        created: false
+      }
+    }
+  })
 }
 
 // 应用就绪后再开窗

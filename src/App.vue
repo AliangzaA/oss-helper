@@ -131,12 +131,42 @@
 
           <!-- 主页：还没配任何存储 -->
           <p v-else-if="!current" class="hint">点左侧 + 添加 OSS</p>
-          <!-- 主页：已选中，只露名字 -->
-          <header v-else class="head">
-            <strong>{{ current.name }}</strong>
-            <span>{{ current.bucket || '未填 Bucket' }}</span>
-            <n-button text type="primary" @click="openEdit">编辑</n-button>
-          </header>
+          <!-- 主页：用当前配置列目录，或按名字查找 -->
+          <section v-else class="home">
+            <header class="head">
+              <strong>{{ current.name }}</strong>
+              <span>{{ current.bucket || '未填 Bucket' }}</span>
+              <n-button text type="primary" @click="openEdit">编辑</n-button>
+            </header>
+            <div class="find-row">
+              <n-input
+                v-model:value="keyword"
+                placeholder="按文件名查找，留空则列出当前目录"
+                clearable
+                @keyup.enter="runFind"
+              />
+              <n-button v-if="deeper" @click="up">返回上层</n-button>
+              <n-button type="primary" :loading="finding" @click="runFind">查找</n-button>
+            </div>
+            <p class="hint where">{{ whereText }}</p>
+            <p v-if="findError" class="err">{{ findError }}</p>
+            <p v-else-if="truncated" class="hint where">结果太多，只显示了一部分</p>
+            <div class="hits">
+              <p v-if="finding" class="hint">正在查找…</p>
+              <p v-else-if="!findError && !hits.length" class="hint">没有结果</p>
+              <button
+                v-for="item in hits"
+                :key="item.key"
+                class="hit"
+                :class="{ file: item.type === 'file' }"
+                type="button"
+                @click="openHit(item)"
+              >
+                <span class="hit-name">{{ item.type === 'folder' ? `${item.name}/` : item.name }}</span>
+                <span v-if="item.type === 'file'" class="hit-size">{{ formatSize(item.size) }}</span>
+              </button>
+            </div>
+          </section>
           <p v-if="page === 'home' && diskError" class="err">{{ diskError }}</p>
         </main>
       </div>
@@ -185,6 +215,44 @@ const title = computed(() => (editId.value ? '编辑 OSS' : '添加 OSS'))
 
 /** 当前选中的那条配置 */
 const current = computed(() => stores.value.find((item) => item.id === active.value) || null)
+
+/** 查找框里的文件名，空着就只列当前目录 */
+const keyword = ref('')
+
+/** 正在列的目录，空就是桶根；不会超出这条配置的默认目录 */
+const place = ref('')
+
+/** 查找进行中 */
+const finding = ref(false)
+
+/** 查找失败的文案 */
+const findError = ref('')
+
+/** 当前列出的目录和文件 */
+const hits = ref([])
+
+/** 结果被截断了 */
+const truncated = ref(false)
+
+/** 已经进入默认目录的子目录，才显示返回上层 */
+const deeper = computed(() => {
+  /** 这条配置的默认目录 */
+  const root = current.value?.prefix || ''
+  return !!place.value && place.value !== root && !String(keyword.value || '').trim()
+})
+
+/** 查找范围说明 */
+const whereText = computed(() => {
+  /** 默认目录，空显示成桶根 */
+  const root = current.value?.prefix || '桶根'
+
+  // 填了关键字就固定在默认目录下找，不跟着点进去的子目录走
+  if (String(keyword.value || '').trim()) {
+    return `在 ${root} 里按名字找`
+  }
+
+  return place.value || '桶根'
+})
 
 /** 连上阿里云的最低门槛，再加我们自己的名称 */
 const rules = {
@@ -261,12 +329,123 @@ function clearValid() {
   })
 }
 
+/** 字节数收成短一点的显示 */
+function formatSize(size) {
+  /** 原始字节 */
+  const n = Number(size) || 0
+
+  // 小于 1KB 直接显示字节
+  if (n < 1024) {
+    return `${n} B`
+  }
+
+  // 小于 1MB
+  if (n < 1024 * 1024) {
+    return `${(n / 1024).toFixed(1)} KB`
+  }
+
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** 当前目录的上一层，不能高过默认目录 */
+function parentPlace(here, root) {
+  /** 默认目录 */
+  const head = String(root || '')
+  /** 去掉尾部斜杠再找上一层 */
+  const cut = String(here || '').replace(/\/$/, '')
+  /** 最后一个斜杠 */
+  const at = cut.lastIndexOf('/')
+  /** 上一层前缀 */
+  const parent = at < 0 ? '' : `${cut.slice(0, at)}/`
+
+  // 再往上就越过默认目录了
+  if (parent.length < head.length) {
+    return head
+  }
+
+  return parent
+}
+
+/** 用当前配置向 OSS 查找 */
+async function runFind() {
+  // 没选中存储就没有配置可用
+  if (!current.value) {
+    return
+  }
+
+  // 浏览器预览没有预加载
+  if (!window.ossApi) {
+    findError.value = '请在应用窗口里查找'
+    hits.value = []
+    return
+  }
+
+  /** 去掉首尾空白的关键字 */
+  const word = String(keyword.value || '').trim()
+  finding.value = true
+  findError.value = ''
+
+  try {
+    /** 主进程按 id 读配置再查，页面不把密钥再传一遍 */
+    const res = await window.ossApi.find({
+      id: current.value.id,
+      place: place.value,
+      keyword: word
+    })
+
+    // 配置不齐或 OSS 拒绝
+    if (!res.ok) {
+      findError.value = res.error || '查找失败'
+      hits.value = []
+      truncated.value = false
+      return
+    }
+
+    hits.value = res.items || []
+    truncated.value = !!res.truncated
+
+    // 列目录时用服务端确认过的前缀，避免页面和桶对不齐
+    if (!word) {
+      place.value = res.place || ''
+    }
+  } catch (err) {
+    findError.value = err && err.message ? err.message : '查找失败'
+    hits.value = []
+  } finally {
+    finding.value = false
+  }
+}
+
+/** 点目录就进去列一层；文件只展示，不打开 */
+function openHit(item) {
+  // 文件没有下一层
+  if (!item || item.type !== 'folder') {
+    return
+  }
+
+  place.value = item.key
+  keyword.value = ''
+  runFind()
+}
+
+/** 从子目录回到上一层 */
+function up() {
+  place.value = parentPlace(place.value, current.value?.prefix || '')
+  keyword.value = ''
+  runFind()
+}
+
 /** 点左侧圆点：切存储，并离开配置页或设置页 */
 function pick(id) {
   active.value = id
   // 未保存的草稿丢掉，避免串到另一个存储上
   page.value = 'home'
   diskError.value = ''
+  keyword.value = ''
+  /** 切过去的那条配置 */
+  const item = stores.value.find((row) => row.id === id)
+  place.value = item?.prefix || ''
+  runFind()
 }
 
 /** 点加号：右侧换成空白配置页 */
@@ -440,12 +619,36 @@ async function save() {
     if (!wrote) {
       return
     }
+
+    /** 刚写入的这条，前缀已经被整理过 */
+    const saved = stores.value.find((item) => item.id === id)
+
+    // 填了默认目录，桶里没有就建
+    if (saved && saved.prefix) {
+      // 建目录只能在应用窗口里做
+      if (!window.ossApi) {
+        diskError.value = '配置已保存，请在应用窗口里创建目录'
+        return
+      }
+
+      /** 桶里是否已经有这个目录 */
+      const made = await window.ossApi.ensure({ id })
+
+      // 配置在了，目录没建成，留在这一页看错误
+      if (!made.ok) {
+        diskError.value = made.error || '创建目录失败'
+        return
+      }
+    }
   } catch (err) {
     diskError.value = err && err.message ? err.message : '写入失败'
     return
   }
 
   close()
+  keyword.value = ''
+  place.value = current.value?.prefix || ''
+  runFind()
 }
 
 // 窗口起来就读盘，浏览器预览没有接口就保持空列表
@@ -457,6 +660,8 @@ onMounted(async () => {
 
   try {
     applyAll(await window.configApi.load())
+    place.value = current.value?.prefix || ''
+    runFind()
   } catch (err) {
     diskError.value = err && err.message ? err.message : '读取配置失败'
   }
@@ -594,6 +799,71 @@ onMounted(async () => {
 
 .head :deep(.n-button) {
   margin-left: auto;
+}
+
+.home {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.find-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.find-row :deep(.n-input) {
+  flex: 1;
+}
+
+.where {
+  margin-top: 10px;
+}
+
+.hits {
+  flex: 1;
+  min-height: 0;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.hit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hit:hover {
+  background: var(--dot);
+}
+
+.hit.file {
+  cursor: default;
+}
+
+.hit-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hit-size {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .form-page {

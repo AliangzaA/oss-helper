@@ -33,4 +33,16 @@ interface Window {
     pickDir: () => Promise<DiskState & { canceled?: boolean }>
     resetDir: () => Promise<DiskState>
   }
+  /** 用已保存配置查找 OSS 对象 */
+  ossApi?: {
+    find: (data: { id: string; place: string; keyword: string }) => Promise<{
+      ok: boolean
+      error: string
+      mode?: 'list' | 'find'
+      place?: string
+      truncated?: boolean
+      items: Array<{ type: 'folder' | 'file'; name: string; key: string; size: number }>
+    }>
+    ensure: (data: { id: string }) => Promise<{ ok: boolean; error: string; created: boolean }>
+  }
 }

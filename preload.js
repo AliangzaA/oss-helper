@@ -11,3 +11,10 @@ contextBridge.exposeInMainWorld('configApi', {
   /** 丢掉自定义目录，回到默认位置 */
   resetDir: () => ipcRenderer.invoke('store:resetDir')
 })
+
+contextBridge.exposeInMainWorld('ossApi', {
+  /** 用某条已保存的配置列目录或按名字查找 */
+  find: (data) => ipcRenderer.invoke('oss:find', data),
+  /** 默认目录在桶里不存在时建出来 */
+  ensure: (data) => ipcRenderer.invoke('oss:ensure', data)
+})
