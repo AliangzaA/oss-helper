@@ -1182,9 +1182,11 @@ async function submitName() {
         return
       }
 
+      // 响应式对象过不了 IPC，只带改名要用的字段
+      const item = pickedItems.value[0]
       res = await window.ossApi.rename({
         id: current.value.id,
-        item: pickedItems.value[0],
+        item: { type: item.type, key: item.key },
         name: nameDraft.value
       })
     } else {
