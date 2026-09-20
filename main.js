@@ -1,8 +1,12 @@
 // 主进程：开窗口，并把配置读写交给 persist
-const { app, BrowserWindow, Menu, ipcMain } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const persist = require('./persist')
 const oss = require('./oss')
+
+/** 选中还没传完的本地文件，页面只拿 id，避免随便传一个路径就能读盘 */
+const pending = new Map()
 
 /** 主窗口引用，避免被垃圾回收提前关掉 */
 let win = null
@@ -132,6 +136,163 @@ function bindStore() {
         error: err && err.message ? err.message : '创建目录失败',
         created: false
       }
+    }
+  })
+  ipcMain.handle('oss:pick', async (event) => {
+    /** 挂到发起请求的窗口上 */
+    const win = BrowserWindow.fromWebContents(event.sender)
+    /** 文件框参数，允许多选 */
+    const options = {
+      title: '选择要上传的文件',
+      properties: ['openFile', 'multiSelections']
+    }
+    /** 用户选的本地文件 */
+    const picked = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+
+    // 取消就没有新文件
+    if (picked.canceled || !picked.filePaths.length) {
+      return { ok: true, canceled: true, files: [] }
+    }
+
+    /** 交给页面展示的条目，路径留在主进程 */
+    const files = []
+
+    for (const filePath of picked.filePaths) {
+      // 空路径跳过
+      if (!filePath) {
+        continue
+      }
+
+      /** 页面用来指回这条路径的 id */
+      const id = `up-${Date.now()}-${pending.size}`
+      /** 列表上要显示的大小，读不到就当 0 */
+      let size = 0
+
+      try {
+        size = fs.statSync(filePath).size
+      } catch {
+        // 文件刚被挪走时仍让用户看见名字，真正上传时再报错
+        size = 0
+      }
+
+      pending.set(id, filePath)
+      files.push({
+        id,
+        name: path.basename(filePath),
+        size
+      })
+    }
+
+    return { ok: true, canceled: false, files }
+  })
+  ipcMain.handle('oss:forget', (_event, ids) => {
+    /** 页面关掉弹窗或拿掉的那些 id */
+    const list = Array.isArray(ids) ? ids : []
+    list.forEach((id) => pending.delete(id))
+    return { ok: true }
+  })
+  ipcMain.handle('oss:upload', async (event, payload) => {
+    /** 当前这条配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 没有配置就不要传
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置', uploaded: 0 }
+    }
+
+    /** 弹窗里还留着的文件 id */
+    const ids = Array.isArray(payload && payload.fileIds) ? payload.fileIds : []
+    /** 主进程里对应的本地路径，不采用页面传来的路径 */
+    const paths = []
+
+    for (const id of ids) {
+      /** 当初选文件时记下的路径 */
+      const filePath = pending.get(id)
+
+      // 弹窗关过或 id 对不上，就不能传
+      if (!filePath) {
+        return { ok: false, error: '有文件已失效，请重新选择', uploaded: 0 }
+      }
+
+      paths.push(filePath)
+    }
+
+    // 一个都没留
+    if (!paths.length) {
+      return { ok: false, error: '请先添加文件', uploaded: 0 }
+    }
+
+    try {
+      /** 传到当前目录，进度按 id 推回页面 */
+      const data = await oss.upload(hit, payload && payload.place, paths, (index, percent) => {
+        // 窗口已经关了就别再推
+        if (event.sender.isDestroyed()) {
+          return
+        }
+
+        event.sender.send('oss:progress', { id: ids[index], percent })
+      })
+      ids.forEach((id) => pending.delete(id))
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : '上传失败',
+        uploaded: 0
+      }
+    }
+  })
+  ipcMain.handle('oss:mkdir', async (_event, payload) => {
+    /** 当前这条配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 没有配置就建不了
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置' }
+    }
+
+    try {
+      /** 新建的目录 */
+      const data = await oss.mkdir(hit, payload && payload.place, payload && payload.name)
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : '新建文件夹失败' }
+    }
+  })
+  ipcMain.handle('oss:remove', async (_event, payload) => {
+    /** 当前这条配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 没有配置就删不了
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置' }
+    }
+
+    try {
+      /** 删掉的数量 */
+      const data = await oss.removeItems(hit, payload && payload.items)
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : '删除失败' }
+    }
+  })
+  ipcMain.handle('oss:rename', async (_event, payload) => {
+    /** 当前这条配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 没有配置就改不了
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置' }
+    }
+
+    try {
+      /** 改名结果 */
+      const data = await oss.rename(hit, payload && payload.item, payload && payload.name)
+      return { ok: true, error: '', ...data }
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : '改名失败' }
     }
   })
 }

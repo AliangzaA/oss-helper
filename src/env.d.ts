@@ -64,5 +64,30 @@ interface Window {
       items: Array<{ type: 'folder' | 'file'; name: string; key: string; size: number }>
     }>
     ensure: (data: { id: string }) => Promise<{ ok: boolean; error: string; created: boolean }>
+    pick: () => Promise<{
+      ok: boolean
+      canceled?: boolean
+      files: Array<{ id: string; name: string; size: number }>
+    }>
+    forget: (ids: string[]) => Promise<{ ok: boolean }>
+    upload: (data: { id: string; place: string; fileIds: string[] }) => Promise<{
+      ok: boolean
+      error?: string
+      uploaded?: number
+    }>
+    onProgress: (cb: (data: { id: string; percent: number }) => void) => () => void
+    mkdir: (data: { id: string; place: string; name: string }) => Promise<{
+      ok: boolean
+      error?: string
+    }>
+    remove: (data: {
+      id: string
+      items: Array<{ type: string; key: string }>
+    }) => Promise<{ ok: boolean; error?: string }>
+    rename: (data: {
+      id: string
+      item: { type: string; key: string }
+      name: string
+    }) => Promise<{ ok: boolean; error?: string }>
   }
 }

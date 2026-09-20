@@ -1,5 +1,6 @@
-// 用已保存的 OSS 配置列目录、按名字查找
+// 用已保存的 OSS 配置列目录、按名字查找，以及上传、建目录、删除、改名
 const OSS = require('ali-oss')
+const path = require('path')
 
 /** 一层最多翻多少页，避免大目录把窗口卡死 */
 const pageCap = 20
@@ -31,13 +32,13 @@ function checkConfig(config) {
 }
 
 /** 用这条配置创建客户端 */
-function createClient(config) {
+function createClient(config, timeout) {
   /** 传给 SDK 的参数 */
   const options = {
     accessKeyId: config.accessKeyId,
     accessKeySecret: config.accessKeySecret,
     bucket: config.bucket,
-    timeout: 60 * 1000
+    timeout: timeout || 60 * 1000
   }
 
   // 填了 Endpoint 就按它连，不再用 Region 猜
@@ -298,7 +299,366 @@ async function ensureDir(config) {
   return { created: true }
 }
 
+/** 配置不齐就抛错，齐了返回客户端 */
+function openClient(config, timeout) {
+  /** 配置问题 */
+  const error = checkConfig(config)
+
+  // 没配齐就不要发请求
+  if (error) {
+    throw new Error(error)
+  }
+
+  return createClient(config, timeout)
+}
+
+/** 当前目录前缀，保证在默认目录里面，并且非空时以 / 结尾 */
+function dirPrefix(config, place) {
+  /** 收进默认目录后的位置 */
+  let here = keepInside(config.prefix || '', place || '')
+
+  // 子目录统一带尾斜杠，上传才不会和文件名粘住
+  if (here && !here.endsWith('/')) {
+    here += '/'
+  }
+
+  return here
+}
+
+/** 单层名字是否能用，返回错误或空串 */
+function checkName(name) {
+  /** 去掉首尾空白 */
+  const text = String(name || '').trim()
+
+  // 空名字建不出来
+  if (!text) {
+    return '名称不能为空'
+  }
+
+  // 只允许当前这一层，路径分隔留给目录本身
+  if (text.includes('/') || text.includes('\\')) {
+    return '名称不能包含 / 或 \\'
+  }
+
+  // 避免相对路径
+  if (text === '.' || text === '..') {
+    return '名称不合法'
+  }
+
+  return ''
+}
+
+/** 对象必须在默认目录里，空 key 视为桶根，直接拒绝 */
+function assertInside(root, key) {
+  /** 默认目录 */
+  const head = String(root || '')
+  /** 要动的对象 */
+  const text = String(key || '')
+
+  // 空 key 会作用到整桶
+  if (!text) {
+    throw new Error('不能操作桶根')
+  }
+
+  // 跑到默认目录外面
+  if (head && text !== head && !text.startsWith(head)) {
+    throw new Error('不能操作默认目录以外的对象')
+  }
+}
+
+/** 拉出某个前缀下的全部对象名 */
+async function listAllKeys(client, prefix) {
+  /** 目录前缀 */
+  const head = String(prefix || '')
+
+  // 空前缀会把整桶列出来
+  if (!head) {
+    throw new Error('不能删除桶根')
+  }
+
+  /** 收集到的 key */
+  const keys = []
+  /** 翻页游标 */
+  let token = null
+
+  do {
+    /** 不加 delimiter，子目录里的文件也算上 */
+    const query = {
+      prefix: head,
+      'max-keys': 1000
+    }
+
+    // 续页
+    if (token) {
+      query['continuation-token'] = token
+    }
+
+    /** 本页 */
+    const page = await client.listV2(query)
+    token = page.nextContinuationToken || null
+
+    ;(page.objects || []).forEach((obj) => {
+      // 没有名字的跳过
+      if (obj.name) {
+        keys.push(obj.name)
+      }
+    })
+  } while (token)
+
+  return keys
+}
+
+/** 删掉一个目录前缀下的全部对象 */
+async function removePrefix(client, prefix) {
+  /** 要删的目录 */
+  const head = String(prefix || '')
+  /** 这个前缀下的对象 */
+  const keys = await listAllKeys(client, head)
+
+  // 只有逻辑目录、没有对象时，再试一次占位对象
+  if (!keys.includes(head)) {
+    keys.push(head)
+  }
+
+  // deleteMulti 一次太多容易失败，按 900 一批
+  for (let i = 0; i < keys.length; i += 900) {
+    /** 这一批 key */
+    const batch = keys.slice(i, i + 900)
+    await client.deleteMulti(batch, { quiet: true })
+  }
+}
+
+/**
+ * 上传本地文件到当前目录，并按文件回报 0–100 的进度
+ * @param {object} config
+ * @param {string} place 当前目录
+ * @param {string[]} paths 本地路径
+ * @param {(index: number, percent: number) => void} [onProgress]
+ */
+async function upload(config, place, paths, onProgress) {
+  /** 大文件放宽超时 */
+  const client = openClient(config, 10 * 60 * 1000)
+  /** 当前目录 */
+  const head = dirPrefix(config, place)
+  /** 成功个数 */
+  let uploaded = 0
+  /** 页面这次要传的路径 */
+  const list = paths || []
+
+  for (let index = 0; index < list.length; index += 1) {
+    /** 这一条本地路径 */
+    const filePath = list[index]
+
+    // 对话框有时会给空项
+    if (!filePath) {
+      continue
+    }
+
+    /** 只取文件名，不带本地目录 */
+    const name = path.basename(filePath)
+    /** 名称不合法就停，避免把路径拼进对象键 */
+    const error = checkName(name)
+
+    // 本地文件名本身就不该进 OSS
+    if (error) {
+      throw new Error(error)
+    }
+
+    // 开始传之前先把进度归零，进度条才有起点
+    if (onProgress) {
+      onProgress(index, 0)
+    }
+
+    try {
+      // 分片上传才会持续回调进度，小文件也会很快走到 100
+      await client.multipartUpload(`${head}${name}`, filePath, {
+        progress: (ratio) => {
+          // 还没人听进度就别算百分比
+          if (!onProgress) {
+            return
+          }
+
+          /** SDK 给的是 0 到 1，收成整数百分比 */
+          const percent = Math.max(0, Math.min(100, Math.round(Number(ratio) * 100)))
+          onProgress(index, percent)
+        }
+      })
+    } catch (err) {
+      /** 带上文件名，弹窗才知道是哪一条失败 */
+      const message = err && err.message ? err.message : '上传失败'
+      throw new Error(`${name}：${message}`)
+    }
+
+    // 有的小文件回调停在 99，传完强制记成完成
+    if (onProgress) {
+      onProgress(index, 100)
+    }
+
+    uploaded += 1
+  }
+
+  return { uploaded }
+}
+
+/**
+ * 在当前目录建一个空文件夹
+ * @param {object} config
+ * @param {string} place
+ * @param {string} name 单层目录名
+ */
+async function mkdir(config, place, name) {
+  /** 名称问题 */
+  const error = checkName(name)
+
+  // 名字不合法就不连
+  if (error) {
+    throw new Error(error)
+  }
+
+  /** 客户端 */
+  const client = openClient(config)
+  /** 新目录完整前缀 */
+  const folderKey = `${dirPrefix(config, place)}${String(name).trim()}/`
+  await client.put(folderKey, Buffer.alloc(0))
+  return { key: folderKey }
+}
+
+/**
+ * 删除选中的文件或文件夹
+ * @param {object} config
+ * @param {{ type: string, key: string }[]} items
+ */
+async function removeItems(config, items) {
+  /** 没有选中就不用发请求 */
+  const list = Array.isArray(items) ? items : []
+
+  // 空选择没有意义
+  if (!list.length) {
+    throw new Error('请先选择文件或文件夹')
+  }
+
+  /** 客户端 */
+  const client = openClient(config)
+  /** 默认目录 */
+  const root = String(config.prefix || '')
+
+  for (const item of list) {
+    /** 对象键 */
+    const key = String((item && item.key) || '')
+    assertInside(root, key)
+
+    // 文件夹要连带里面的文件一起删
+    if (item.type === 'folder' || key.endsWith('/')) {
+      await removePrefix(client, key)
+    } else {
+      await client.delete(key)
+    }
+  }
+
+  return { removed: list.length }
+}
+
+/** 同目录给文件改名：复制到新 key 再删旧的 */
+async function renameFile(client, fromKey, name) {
+  /** 原 key */
+  const source = String(fromKey || '').replace(/^\/+/, '')
+
+  // 目录不走这条
+  if (!source || source.endsWith('/')) {
+    throw new Error('请选择文件')
+  }
+
+  /** 所在目录 */
+  const parent = source.includes('/') ? source.slice(0, source.lastIndexOf('/') + 1) : ''
+  /** 新 key */
+  const target = `${parent}${name}`
+
+  // 名字没变
+  if (target === source) {
+    return { from: source, to: target }
+  }
+
+  await client.copy(target, source)
+  await client.delete(source)
+  return { from: source, to: target }
+}
+
+/** 给文件夹改名：子树复制过去再删旧前缀 */
+async function renameFolder(client, fromPrefix, name) {
+  /** 旧前缀 */
+  const source = String(fromPrefix || '')
+
+  // 桶根本身不能改名
+  if (!source || !source.endsWith('/')) {
+    throw new Error('请选择文件夹')
+  }
+
+  /** 父目录 */
+  const parent = source.slice(0, source.lastIndexOf('/', source.length - 2) + 1)
+  /** 新前缀 */
+  const target = `${parent}${name}/`
+
+  // 名字没变
+  if (target === source) {
+    return { from: source, to: target }
+  }
+
+  /** 旧前缀下的对象 */
+  const keys = await listAllKeys(client, source)
+
+  // 空目录至少放一个占位，列表才看得到
+  if (!keys.length) {
+    await client.put(target, Buffer.alloc(0))
+    return { from: source, to: target }
+  }
+
+  for (const key of keys) {
+    /** 相对旧前缀的后半段 */
+    const tail = key.slice(source.length)
+    await client.copy(`${target}${tail}`, key)
+  }
+
+  await removePrefix(client, source)
+  return { from: source, to: target }
+}
+
+/**
+ * 改名，一次只处理一个
+ * @param {object} config
+ * @param {{ type: string, key: string }} item
+ * @param {string} name
+ */
+async function rename(config, item, name) {
+  /** 名称问题 */
+  const error = checkName(name)
+
+  // 名字不合法就停
+  if (error) {
+    throw new Error(error)
+  }
+
+  /** 去掉空白后的新名字 */
+  const nextName = String(name).trim()
+  /** 原对象 */
+  const key = String((item && item.key) || '')
+  assertInside(String(config.prefix || ''), key)
+
+  /** 客户端 */
+  const client = openClient(config)
+
+  // 文件夹改的是整棵子树
+  if (item.type === 'folder' || key.endsWith('/')) {
+    return renameFolder(client, key, nextName)
+  }
+
+  return renameFile(client, key, nextName)
+}
+
 module.exports = {
   find,
-  ensureDir
+  ensureDir,
+  upload,
+  mkdir,
+  removeItems,
+  rename
 }

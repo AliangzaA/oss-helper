@@ -167,33 +167,144 @@
               <n-button type="primary" :loading="finding" @click="runFind">查找</n-button>
             </div>
             <p class="hint where">{{ whereText }}</p>
+            <div class="act-row">
+              <n-button :disabled="working" @click="askUpload">上传</n-button>
+              <n-button :disabled="working" @click="askMkdir">新建文件夹</n-button>
+              <n-button :disabled="working || pickedItems.length !== 1" @click="askRename">改名</n-button>
+              <n-button :disabled="working || !pickedItems.length" @click="askRemove">删除</n-button>
+              <span class="hint">已选 {{ pickedItems.length }}</span>
+            </div>
             <p v-if="findError" class="err">{{ findError }}</p>
             <p v-else-if="truncated" class="hint where">结果太多，只显示了一部分</p>
+            <svg class="ico-src" aria-hidden="true">
+              <symbol id="ico-folder" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M3.5 7.2A2.2 2.2 0 0 1 5.7 5h3.2l1.6 1.8h7.8a2.2 2.2 0 0 1 2.2 2.2v8.3a2.2 2.2 0 0 1-2.2 2.2H5.7a2.2 2.2 0 0 1-2.2-2.2V7.2z" />
+              </symbol>
+              <symbol id="ico-file" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M7 3.5h6.2L19 9.2V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7.5 3.5H7zm6 .8V9h4.6" />
+              </symbol>
+              <symbol id="ico-image" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M5 5.5A1.5 1.5 0 0 1 6.5 4h11A1.5 1.5 0 0 1 19 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5v-13zm2.2 9.2 2.3-2.6 1.8 1.8 2.6-3.2 3 4H7.2zM9 9.2a1.2 1.2 0 1 0 0-2.4 1.2 1.2 0 0 0 0 2.4z" />
+              </symbol>
+              <symbol id="ico-video" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M4 7.5A1.5 1.5 0 0 1 5.5 6h8A1.5 1.5 0 0 1 15 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 4 16.5v-9zm11 1.8 4-2.3v9.9l-4-2.2V9.3z" />
+              </symbol>
+              <symbol id="ico-audio" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M9 5.5v9.2a2.6 2.6 0 1 1-1.6-2.4V8.2l8-1.6v6.5a2.6 2.6 0 1 1-1.6-2.4V5.5L9 7v-1.5z" />
+              </symbol>
+              <symbol id="ico-archive" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M6 4.5h12A1.5 1.5 0 0 1 19.5 6v12a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V6A1.5 1.5 0 0 1 6 4.5zm5 1.2h2v1.6h-2V5.7zm0 3h2v1.6h-2V8.7zm0 3H13v4.2h-2v-4.2z" />
+              </symbol>
+              <symbol id="ico-apk" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M8.2 8.2 6.4 6.4l1.1-1.1 1.9 1.9a6 6 0 0 1 5.2 0l1.9-1.9 1.1 1.1-1.8 1.8A6 6 0 0 1 18 12.5V17a2 2 0 0 1-2 2h-1v-4H9v4H8a2 2 0 0 1-2-2v-4.5a6 6 0 0 1 2.2-4.3zM9.5 12.2a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm5 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
+              </symbol>
+            </svg>
             <div class="hits">
               <p v-if="finding" class="hint">正在查找…</p>
               <p v-else-if="!findError && !hits.length" class="hint">没有结果</p>
-              <button
+              <div
                 v-for="item in hits"
                 :key="item.key"
                 class="hit"
-                :class="{ file: item.type === 'file' }"
-                type="button"
-                @click="openHit(item)"
+                :class="{ file: item.type === 'file', on: isPicked(item) }"
+                role="button"
+                tabindex="0"
+                @click="onHit(item)"
+                @keydown.enter="onHit(item)"
               >
-                <span class="hit-name">{{ item.type === 'folder' ? `${item.name}/` : item.name }}</span>
+                <input
+                  class="tick"
+                  type="checkbox"
+                  :checked="isPicked(item)"
+                  @click.stop="togglePick(item)"
+                />
+                <svg class="ico" :class="`ico-${kindOf(item)}`" aria-hidden="true">
+                  <use :href="`#ico-${kindOf(item)}`" />
+                </svg>
+                <span class="hit-name">{{ item.name }}</span>
                 <span v-if="item.type === 'file'" class="hit-size">{{ formatSize(item.size) }}</span>
-              </button>
+              </div>
             </div>
           </section>
           <p v-if="page === 'home' && diskError" class="err">{{ diskError }}</p>
         </main>
       </div>
+
+      <!-- 新建文件夹和改名共用 -->
+      <n-modal v-model:show="nameShow" preset="card" :title="nameTitle" style="width: 380px">
+        <n-input v-model:value="nameDraft" placeholder="名称" @keyup.enter="submitName" />
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="nameShow = false">取消</n-button>
+            <n-button type="primary" :loading="working" @click="submitName">确定</n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
+      <!-- 先看列表，点上传才开始传，进度留在每一行 -->
+      <n-modal
+        :show="upShow"
+        preset="card"
+        title="上传文件"
+        style="width: 460px"
+        :mask-closable="!working"
+        :close-on-esc="!working"
+        :closable="!working"
+        @update:show="onUpShow"
+      >
+        <div class="up-head">
+          <p class="hint">上传到 {{ showPlace(place) }}</p>
+          <n-button size="small" :disabled="working || upDone" @click="addUploads">添加文件</n-button>
+        </div>
+        <p v-if="upError" class="err">{{ upError }}</p>
+        <p v-else-if="!upFiles.length" class="up-empty">还没有文件</p>
+        <div v-else class="up-list">
+          <div v-for="file in upFiles" :key="file.id" class="up-row">
+            <svg class="ico" :class="`ico-${kindOf({ type: 'file', name: file.name })}`" aria-hidden="true">
+              <use :href="`#ico-${kindOf({ type: 'file', name: file.name })}`" />
+            </svg>
+            <div class="up-main">
+              <span class="up-name">{{ file.name }}</span>
+              <span class="up-size">{{ formatSize(file.size) }}</span>
+              <button class="up-drop" type="button" :disabled="working || upDone" @click="dropUpload(file)">移除</button>
+              <n-progress
+                v-if="working || upDone || file.percent > 0"
+                class="up-bar"
+                type="line"
+                :percentage="file.percent"
+                :height="6"
+                :status="file.percent >= 100 ? 'success' : 'default'"
+              />
+              <p v-if="file.error" class="up-err">{{ file.error }}</p>
+            </div>
+          </div>
+        </div>
+        <template #footer>
+          <n-space justify="end">
+            <n-button v-if="!upDone" :disabled="working" @click="closeUpload">取消</n-button>
+            <n-button type="primary" :loading="working" :disabled="!upDone && !upFiles.length" @click="confirmUpload">
+              {{ upDone ? '完成' : '上传' }}
+            </n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
+      <!-- 删除前确认，文件夹会连带里面的文件 -->
+      <n-modal v-model:show="dropShow" preset="card" title="删除" style="width: 380px">
+        <p class="hint">删除选中的 {{ pickedItems.length }} 项。文件夹会连同里面的文件一起删，不能恢复。</p>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="dropShow = false">取消</n-button>
+            <n-button type="primary" :loading="working" @click="removePicked">删除</n-button>
+          </n-space>
+        </template>
+      </n-modal>
     </n-message-provider>
   </n-config-provider>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 /** Naive 中文包，按钮占位符等走中文 */
 import { dateZhCN, zhCN } from 'naive-ui'
 import { overrides, theme } from './theme'
@@ -268,8 +379,47 @@ const findError = ref('')
 /** 当前列出的目录和文件 */
 const hits = ref([])
 
+/** 勾选中的对象键 */
+const picked = ref([])
+
+/** 上传、删除、改名进行中 */
+const working = ref(false)
+
+/** 新建文件夹或改名弹层 */
+const nameShow = ref(false)
+
+/** 弹层里正在填的名字 */
+const nameDraft = ref('')
+
+/** mkdir 新建文件夹，rename 改名 */
+const nameKind = ref('mkdir')
+
+/** 删除确认是否打开 */
+const dropShow = ref(false)
+
+/** 上传弹窗是否打开 */
+const upShow = ref(false)
+
+/** 弹窗里待传的文件，路径不在页面上 */
+const upFiles = ref([])
+
+/** 这一批已经全部传完 */
+const upDone = ref(false)
+
+/** 上传弹窗里的错误 */
+const upError = ref('')
+
+/** 取消进度订阅 */
+let offProgress = null
+
 /** 结果被截断了 */
 const truncated = ref(false)
+
+/** 勾选中的条目，按当前列表过滤，避免删掉已经不在的项 */
+const pickedItems = computed(() => hits.value.filter((item) => picked.value.includes(item.key)))
+
+/** 弹层标题 */
+const nameTitle = computed(() => (nameKind.value === 'rename' ? '改名' : '新建文件夹'))
 
 /** 已经进入默认目录的子目录，才显示返回上层 */
 const deeper = computed(() => {
@@ -278,17 +428,72 @@ const deeper = computed(() => {
   return !!place.value && place.value !== root && !String(keyword.value || '').trim()
 })
 
+/** 目录前缀去掉尾斜杠再给人看，空的就是桶根 */
+function showPlace(key) {
+  /** 只去掉结尾那一个斜杠，中间的路径分隔留着 */
+  const text = String(key || '').replace(/\/$/, '')
+
+  // 桶根没有前缀
+  if (!text) {
+    return '桶根'
+  }
+
+  return text
+}
+
+/** 列表图标：文件夹，或按扩展名粗分成常见类型 */
+function kindOf(item) {
+  // 目录不看扩展名
+  if (!item || item.type === 'folder') {
+    return 'folder'
+  }
+
+  /** 文件名最后一段扩展名 */
+  const name = String(item.name || '')
+  /** 最后一个点，没有就不是扩展名 */
+  const dot = name.lastIndexOf('.')
+  /** 小写扩展名 */
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
+
+  // 图片
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)) {
+    return 'image'
+  }
+
+  // 视频
+  if (['mp4', 'mov', 'mkv', 'webm', 'avi'].includes(ext)) {
+    return 'video'
+  }
+
+  // 音频
+  if (['mp3', 'wav', 'flac', 'aac', 'm4a'].includes(ext)) {
+    return 'audio'
+  }
+
+  // 压缩包
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) {
+    return 'archive'
+  }
+
+  // 安装包单独标出来
+  if (ext === 'apk') {
+    return 'apk'
+  }
+
+  return 'file'
+}
+
 /** 查找范围说明 */
 const whereText = computed(() => {
   /** 默认目录，空显示成桶根 */
-  const root = current.value?.prefix || '桶根'
+  const root = showPlace(current.value?.prefix || '')
 
   // 填了关键字就固定在默认目录下找，不跟着点进去的子目录走
   if (String(keyword.value || '').trim()) {
     return `在 ${root} 里按名字找`
   }
 
-  return place.value || '桶根'
+  return showPlace(place.value)
 })
 
 /** 连上阿里云的最低门槛，再加我们自己的名称 */
@@ -440,6 +645,7 @@ async function runFind() {
 
     hits.value = res.items || []
     truncated.value = !!res.truncated
+    picked.value = []
 
     // 列目录时用服务端确认过的前缀，避免页面和桶对不齐
     if (!word) {
@@ -453,16 +659,360 @@ async function runFind() {
   }
 }
 
-/** 点目录就进去列一层；文件只展示，不打开 */
-function openHit(item) {
-  // 文件没有下一层
+/** 点目录就进去列一层；文件改为勾选 */
+function onHit(item) {
+  // 文件没有下一层，点一行等于勾选
   if (!item || item.type !== 'folder') {
+    togglePick(item)
     return
   }
 
   place.value = item.key
   keyword.value = ''
   runFind()
+}
+
+/** 这一项是否已勾选 */
+function isPicked(item) {
+  return picked.value.includes(item && item.key)
+}
+
+/** 勾选或取消勾选，不进入目录 */
+function togglePick(item) {
+  // 空项不记
+  if (!item || !item.key) {
+    return
+  }
+
+  // 已选就拿掉
+  if (picked.value.includes(item.key)) {
+    picked.value = picked.value.filter((key) => key !== item.key)
+    return
+  }
+
+  picked.value = picked.value.concat(item.key)
+}
+
+/** 操作结束后重新列当前目录，方便看到结果 */
+async function refreshList() {
+  keyword.value = ''
+  await runFind()
+}
+
+/** 打开上传弹窗，先不选文件、也不开始传 */
+function askUpload() {
+  // 没选中存储就没有目标目录
+  if (!current.value) {
+    return
+  }
+
+  // 浏览器预览没有文件框
+  if (!window.ossApi || !window.ossApi.pick) {
+    findError.value = '请在应用窗口里上传'
+    return
+  }
+
+  upFiles.value = []
+  upError.value = ''
+  upDone.value = false
+  upShow.value = true
+}
+
+/** 把主进程推来的百分比写到对应那一行 */
+function applyProgress(data) {
+  /** 弹窗里的那一条 */
+  const row = upFiles.value.find((item) => item.id === data.id)
+
+  // 已经移除的文件不再改进度
+  if (!row || !data) {
+    return
+  }
+
+  row.percent = data.percent
+}
+
+/** 系统文件框多选，加进弹窗列表 */
+async function addUploads() {
+  // 正在传或已经传完就别再加
+  if (working.value || upDone.value || !window.ossApi || !window.ossApi.pick) {
+    return
+  }
+
+  upError.value = ''
+
+  try {
+    /** 只有名字和大小，路径留在主进程 */
+    const res = await window.ossApi.pick()
+
+    // 用户取消选择
+    if (!res || res.canceled) {
+      return
+    }
+
+    for (const file of res.files || []) {
+      /** 同名的旧条目，OSS 上也会被后一个盖掉 */
+      const old = upFiles.value.find((item) => item.name === file.name)
+
+      // 同名只留最新一次选择
+      if (old && window.ossApi.forget) {
+        await window.ossApi.forget([old.id])
+        upFiles.value = upFiles.value.filter((item) => item.id !== old.id)
+      }
+
+      upFiles.value = upFiles.value.concat({
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        percent: 0,
+        error: ''
+      })
+    }
+  } catch (err) {
+    upError.value = err && err.message ? err.message : '选择文件失败'
+  }
+}
+
+/** 从列表拿掉一条，并让主进程忘掉路径 */
+async function dropUpload(file) {
+  // 传输过程中不能改列表
+  if (!file || working.value || upDone.value) {
+    return
+  }
+
+  upFiles.value = upFiles.value.filter((item) => item.id !== file.id)
+
+  // 浏览器预览没有这条接口
+  if (window.ossApi && window.ossApi.forget) {
+    await window.ossApi.forget([file.id])
+  }
+}
+
+/** 关掉弹窗。正在上传时不关，避免进度丢了还在传 */
+async function closeUpload() {
+  // 传了一半不能把窗口收掉
+  if (working.value) {
+    return
+  }
+
+  /** 还没传的 id，主进程里的路径要放开 */
+  const ids = upFiles.value.map((file) => file.id)
+  upShow.value = false
+  upFiles.value = []
+  upError.value = ''
+  upDone.value = false
+
+  // 没有待传文件就不用通知主进程
+  if (!ids.length || !window.ossApi || !window.ossApi.forget) {
+    return
+  }
+
+  await window.ossApi.forget(ids)
+}
+
+/** 点遮罩或关闭按钮 */
+function onUpShow(show) {
+  // 打开只发生在 askUpload
+  if (show) {
+    upShow.value = true
+    return
+  }
+
+  closeUpload()
+}
+
+/** 传完后的完成，或还没传时的开始 */
+function confirmUpload() {
+  // 已经成功就只负责关掉
+  if (upDone.value) {
+    closeUpload()
+    return
+  }
+
+  submitUpload()
+}
+
+/** 按弹窗里的列表上传，进度由主进程推回来 */
+async function submitUpload() {
+  // 没选中存储或列表是空的
+  if (!current.value || !upFiles.value.length || working.value) {
+    return
+  }
+
+  // 浏览器预览传不了
+  if (!window.ossApi || !window.ossApi.upload) {
+    upError.value = '请在应用窗口里上传'
+    return
+  }
+
+  working.value = true
+  upError.value = ''
+  upFiles.value.forEach((file) => {
+    file.percent = 0
+    file.error = ''
+  })
+
+  try {
+    /** 只提交 id，路径由主进程自己查 */
+    const res = await window.ossApi.upload({
+      id: current.value.id,
+      place: place.value,
+      fileIds: upFiles.value.map((file) => file.id)
+    })
+
+    // 中途失败时，第一条还没到 100 的就是失败项
+    if (!res.ok) {
+      upError.value = res.error || '上传失败'
+      /** 是否已经标过失败的那一条 */
+      let marked = false
+      upFiles.value.forEach((file) => {
+        // 已完成的保持 100，后面还没开始的先不动
+        if (file.percent >= 100 || marked) {
+          return
+        }
+
+        file.error = res.error || '上传失败'
+        marked = true
+      })
+      return
+    }
+
+    upFiles.value.forEach((file) => {
+      file.percent = 100
+    })
+    upDone.value = true
+    await refreshList()
+  } catch (err) {
+    upError.value = err && err.message ? err.message : '上传失败'
+  } finally {
+    working.value = false
+  }
+}
+
+/** 打开新建文件夹 */
+function askMkdir() {
+  nameKind.value = 'mkdir'
+  nameDraft.value = ''
+  nameShow.value = true
+}
+
+/** 打开改名，只能选一项 */
+function askRename() {
+  /** 当前勾的那一项 */
+  const item = pickedItems.value[0]
+
+  // 没选或多选都不改
+  if (!item || pickedItems.value.length !== 1) {
+    return
+  }
+
+  nameKind.value = 'rename'
+  nameDraft.value = item.name
+  nameShow.value = true
+}
+
+/** 提交新建或改名 */
+async function submitName() {
+  // 没选中存储
+  if (!current.value) {
+    return
+  }
+
+  // 浏览器预览没有这些接口
+  if (!window.ossApi || !window.ossApi.mkdir || !window.ossApi.rename) {
+    findError.value = '请在应用窗口里操作'
+    return
+  }
+
+  working.value = true
+  findError.value = ''
+
+  try {
+    /** 接口返回 */
+    let res
+
+    // 改名只动勾选的那一项
+    if (nameKind.value === 'rename') {
+      // 弹层开着时选择被清掉就别发空请求
+      if (!pickedItems.value[0]) {
+        findError.value = '请选择一项'
+        return
+      }
+
+      res = await window.ossApi.rename({
+        id: current.value.id,
+        item: pickedItems.value[0],
+        name: nameDraft.value
+      })
+    } else {
+      res = await window.ossApi.mkdir({
+        id: current.value.id,
+        place: place.value,
+        name: nameDraft.value
+      })
+    }
+
+    // 名称不合法或 OSS 拒绝
+    if (!res.ok) {
+      findError.value = res.error || '操作失败'
+      return
+    }
+
+    nameShow.value = false
+    await refreshList()
+  } catch (err) {
+    findError.value = err && err.message ? err.message : '操作失败'
+  } finally {
+    working.value = false
+  }
+}
+
+/** 打开删除确认 */
+function askRemove() {
+  // 没勾选就不要弹
+  if (!pickedItems.value.length) {
+    return
+  }
+
+  dropShow.value = true
+}
+
+/** 删除勾选的文件和文件夹 */
+async function removePicked() {
+  // 没选中存储
+  if (!current.value) {
+    return
+  }
+
+  // 浏览器预览删不了桶里的对象
+  if (!window.ossApi || !window.ossApi.remove) {
+    findError.value = '请在应用窗口里删除'
+    return
+  }
+
+  working.value = true
+  findError.value = ''
+
+  try {
+    /** 只把类型和 key 交给主进程 */
+    const res = await window.ossApi.remove({
+      id: current.value.id,
+      items: pickedItems.value.map((item) => ({ type: item.type, key: item.key }))
+    })
+
+    // 删失败就留着确认框上的列表，错误写在主区域
+    if (!res.ok) {
+      findError.value = res.error || '删除失败'
+      dropShow.value = false
+      return
+    }
+
+    dropShow.value = false
+    await refreshList()
+  } catch (err) {
+    findError.value = err && err.message ? err.message : '删除失败'
+  } finally {
+    working.value = false
+  }
 }
 
 /** 从子目录回到上一层 */
@@ -826,6 +1376,11 @@ async function save() {
 
 // 窗口起来就读盘，浏览器预览没有接口就保持空列表
 onMounted(async () => {
+  // 进度可能在上传过程中随时过来
+  if (window.ossApi && window.ossApi.onProgress) {
+    offProgress = window.ossApi.onProgress(applyProgress)
+  }
+
   // 预览页没有预加载
   if (!window.configApi) {
     return
@@ -837,6 +1392,14 @@ onMounted(async () => {
     runFind()
   } catch (err) {
     diskError.value = err && err.message ? err.message : '读取配置失败'
+  }
+})
+
+onUnmounted(() => {
+  // 窗口拆掉时别再收进度
+  if (offProgress) {
+    offProgress()
+    offProgress = null
   }
 })
 </script>
@@ -996,6 +1559,20 @@ onMounted(async () => {
   margin-top: 10px;
 }
 
+.act-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tick {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+}
+
 .hits {
   flex: 1;
   min-height: 0;
@@ -1018,12 +1595,50 @@ onMounted(async () => {
   cursor: pointer;
 }
 
-.hit:hover {
+.hit:hover,
+.hit.on {
   background: var(--dot);
 }
 
-.hit.file {
-  cursor: default;
+.ico-src {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.ico {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.ico-folder {
+  color: #e8b84a;
+}
+
+.ico-file {
+  color: var(--muted);
+}
+
+.ico-image {
+  color: #6cb6ff;
+}
+
+.ico-video {
+  color: #c58bff;
+}
+
+.ico-audio {
+  color: #5dcaa5;
+}
+
+.ico-archive {
+  color: #e0a15a;
+}
+
+.ico-apk {
+  color: #7dce6a;
 }
 
 .hit-name {
@@ -1036,6 +1651,99 @@ onMounted(async () => {
 
 .hit-size {
   color: var(--muted);
+  font-size: 12px;
+}
+
+.up-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.up-empty {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.up-list {
+  max-height: 320px;
+  margin-top: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input);
+}
+
+.up-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.up-row + .up-row {
+  border-top: 1px solid var(--line);
+}
+
+.up-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 12px;
+}
+
+.up-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 20px;
+}
+
+.up-size {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.up-drop {
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.up-drop:hover {
+  color: var(--danger);
+}
+
+.up-drop:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.up-bar,
+.up-err {
+  grid-column: 1 / -1;
+}
+
+.up-bar {
+  margin-top: 6px;
+}
+
+.up-err {
+  margin: 4px 0 0;
+  color: var(--danger);
   font-size: 12px;
 }
 

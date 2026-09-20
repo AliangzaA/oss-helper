@@ -20,5 +20,24 @@ contextBridge.exposeInMainWorld('ossApi', {
   /** 用某条已保存的配置列目录或按名字查找 */
   find: (data) => ipcRenderer.invoke('oss:find', data),
   /** 默认目录在桶里不存在时建出来 */
-  ensure: (data) => ipcRenderer.invoke('oss:ensure', data)
+  ensure: (data) => ipcRenderer.invoke('oss:ensure', data),
+  /** 弹出系统文件框，只把名字和大小交回页面 */
+  pick: () => ipcRenderer.invoke('oss:pick'),
+  /** 弹窗关掉或移除某一条时，丢掉主进程里记下的路径 */
+  forget: (ids) => ipcRenderer.invoke('oss:forget', ids),
+  /** 按挑选时的 id 上传到当前目录 */
+  upload: (data) => ipcRenderer.invoke('oss:upload', data),
+  /** 订阅每个文件的上传进度，返回取消订阅 */
+  onProgress: (cb) => {
+    /** 主进程推过来的百分比 */
+    const handler = (_event, data) => cb(data)
+    ipcRenderer.on('oss:progress', handler)
+    return () => ipcRenderer.removeListener('oss:progress', handler)
+  },
+  /** 在当前目录新建文件夹 */
+  mkdir: (data) => ipcRenderer.invoke('oss:mkdir', data),
+  /** 删除选中的文件或文件夹 */
+  remove: (data) => ipcRenderer.invoke('oss:remove', data),
+  /** 给选中的一项改名 */
+  rename: (data) => ipcRenderer.invoke('oss:rename', data)
 })
