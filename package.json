@@ -3,22 +3,67 @@
   "version": "1.0.0",
   "description": "阿里云 OSS APK 批量上传与二维码工具",
   "main": "main.js",
-  "scripts": {
-    "start": "node scripts/dev.js"
-  },
-  "author": "",
+  "author": "OSS Helper",
   "license": "ISC",
+  "scripts": {
+    "start": "node scripts/dev.js",
+    "build": "vite build && electron-builder --win nsis",
+    "build:dir": "vite build && electron-builder --win dir"
+  },
   "dependencies": {
-    "ali-oss": "^6.23.0",
-    "naive-ui": "^2.45.3",
-    "qrcode": "^1.5.4",
-    "vue": "^3.5.43"
+    "ali-oss": "^6.23.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.9",
     "electron": "^44.4.1",
+    "electron-builder": "^26.0.12",
+    "naive-ui": "^2.45.3",
+    "qrcode": "^1.5.4",
     "unplugin-auto-import": "^21.1.0",
     "unplugin-vue-components": "^32.1.0",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "vue": "^3.5.43"
+  },
+  "build": {
+    "appId": "com.osshelper.app",
+    "productName": "OSS Helper",
+    "copyright": "OSS Helper",
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "persist.js",
+      "oss.js",
+      "dist/**",
+      "package.json"
+    ],
+    "asar": true,
+    "forceCodeSigning": false,
+    "electronDist": "node_modules/electron/dist",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "OSS-Helper-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OSS Helper",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "zh_CN"
+      ]
+    }
   }
 }

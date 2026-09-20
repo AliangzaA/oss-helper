@@ -172,7 +172,21 @@
               <n-button v-if="deeper" @click="up">返回上层</n-button>
               <n-button type="primary" :loading="finding" @click="runFind">查找</n-button>
             </div>
-            <p class="hint where">{{ whereText }}</p>
+            <nav v-if="!String(keyword || '').trim()" class="crumbs" aria-label="当前目录">
+              <template v-for="(item, i) in crumbs" :key="item.key || 'root'">
+                <span v-if="i" class="crumb-sep">/</span>
+                <button
+                  v-if="i < crumbs.length - 1"
+                  class="crumb"
+                  type="button"
+                  @click="goPlace(item.key)"
+                >
+                  {{ item.name }}
+                </button>
+                <span v-else class="crumb now">{{ item.name }}</span>
+              </template>
+            </nav>
+            <p v-else class="hint where">{{ whereText }}</p>
             <div class="act-row">
               <n-button :disabled="working" @click="askUpload">上传</n-button>
               <n-button :disabled="working" @click="askMkdir">新建文件夹</n-button>
@@ -322,7 +336,7 @@
       <n-modal v-model:show="codeShow" preset="card" title="二维码" style="width: 420px">
         <n-radio-group v-model:value="codeKind" class="code-kind" name="codeKind">
           <n-radio value="oss">外网域名</n-radio>
-          <n-radio value="custom">自定义域名</n-radio>
+          <n-radio value="custom">自定义域名(可以下载APK文件)</n-radio>
         </n-radio-group>
         <p v-if="codeHint" class="err">{{ codeHint }}</p>
         <p v-else-if="codeNote" class="hint where">{{ codeNote }}</p>
@@ -605,6 +619,37 @@ const whereText = computed(() => {
   }
 
   return showPlace(place.value)
+})
+
+/** 当前路径拆成可点的每一层，不会高于默认目录 */
+const crumbs = computed(() => {
+  /** 配置里的默认目录 */
+  const root = String(current.value?.prefix || '')
+  /** 正在列的目录 */
+  const here = String(place.value || root)
+  /** 去掉尾斜杠再切 */
+  const text = here.replace(/\/$/, '')
+  /** 面包屑 */
+  const items = []
+
+  // 默认目录就是桶根，先放一个根
+  if (!root) {
+    items.push({ name: '桶根', key: '' })
+  }
+
+  // 空路径只显示根
+  if (!text) {
+    return items.length ? items : [{ name: '桶根', key: '' }]
+  }
+
+  /** 累加前缀，每一段都是完整 key */
+  let acc = ''
+  text.split('/').forEach((part) => {
+    acc += `${part}/`
+    items.push({ name: part, key: acc })
+  })
+
+  return items
 })
 
 /** 连上阿里云的最低门槛，再加我们自己的名称 */
@@ -957,7 +1002,7 @@ async function addUploads() {
     }
   } catch (err) {
     upError.value = err && err.message ? err.message : '选择文件失败'
-  }
+    }
 }
 
 /** 从列表拿掉一条，并让主进程忘掉路径 */
@@ -1576,6 +1621,13 @@ function up() {
   runFind()
 }
 
+/** 点路径里的某一层，进到那个目录 */
+function goPlace(key) {
+  place.value = key
+  keyword.value = ''
+  runFind()
+}
+
 /** 右键圆点：在指针处弹出删除 */
 function openMenu(event, id) {
   menuId.value = id
@@ -2127,6 +2179,39 @@ onUnmounted(() => {
 
 .where {
   margin-top: 10px;
+}
+
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.crumb {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  color: var(--accent-hover);
+}
+
+.crumb.now {
+  color: var(--text);
+  cursor: default;
+}
+
+.crumb-sep {
+  color: var(--muted);
 }
 
 .act-row {
