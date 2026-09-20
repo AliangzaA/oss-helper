@@ -17,7 +17,9 @@ function createWindow() {
     width: 1040,
     height: 780,
     title: 'OSS Helper',
-    // 先藏起来，最大化后再显示，避免先闪一下小窗
+    // 开在屏幕中间，不要一上来就铺满
+    center: true,
+    // 先藏起来，页面好了再显示，避免先闪空白窗
     show: false,
     webPreferences: {
       // 预加载脚本：以后在这里暴露安全 API
@@ -32,9 +34,8 @@ function createWindow() {
   // 窗口级菜单也清掉，避免按 Alt 又把 File / Edit 顶出来
   win.removeMenu()
 
-  // 铺满工作区：标题栏、任务栏都留着
+  // 页面好了再显示，保持普通窗口大小
   win.once('ready-to-show', () => {
-    win.maximize()
     win.show()
   })
 

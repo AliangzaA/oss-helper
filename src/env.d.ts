@@ -61,7 +61,14 @@ interface Window {
       mode?: 'list' | 'find'
       place?: string
       truncated?: boolean
-      items: Array<{ type: 'folder' | 'file'; name: string; key: string; size: number }>
+      items: Array<{
+        type: 'folder' | 'file'
+        name: string
+        key: string
+        size: number
+        storage?: string
+        time?: string
+      }>
     }>
     ensure: (data: { id: string }) => Promise<{ ok: boolean; error: string; created: boolean }>
     pick: () => Promise<{

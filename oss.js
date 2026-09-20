@@ -79,6 +79,26 @@ function showName(full, head) {
     .replace(/\/$/, '')
 }
 
+/** 把 SDK 对象收成页面用的一条 */
+function packItem(type, name, key, obj) {
+  /** 更新时间，目录前缀通常没有 */
+  let time = ''
+
+  // 文件才带 lastModified
+  if (obj && obj.lastModified) {
+    time = new Date(obj.lastModified).toISOString()
+  }
+
+  return {
+    type,
+    name,
+    key,
+    size: obj && obj.size ? obj.size : 0,
+    storage: obj && obj.storageClass ? obj.storageClass : '',
+    time
+  }
+}
+
 /**
  * 列出某一层：目录在前，文件在后
  * @param {object} client
@@ -116,12 +136,7 @@ async function listLevel(client, head) {
     truncated = !!page.isTruncated && pages >= pageCap
 
     ;(page.prefixes || []).forEach((folderKey) => {
-      folders.push({
-        type: 'folder',
-        name: showName(folderKey, head),
-        key: folderKey,
-        size: 0
-      })
+      folders.push(packItem('folder', showName(folderKey, head), folderKey, null))
     })
 
     ;(page.objects || []).forEach((obj) => {
@@ -130,12 +145,7 @@ async function listLevel(client, head) {
         return
       }
 
-      files.push({
-        type: 'file',
-        name: showName(obj.name, head),
-        key: obj.name,
-        size: obj.size || 0
-      })
+      files.push(packItem('file', showName(obj.name, head), obj.name, obj))
     })
 
     // 页数到顶就停，剩下的用 truncated 告诉页面
@@ -206,12 +216,7 @@ async function searchNames(client, head, word) {
       /** 以 / 结尾的是目录占位 */
       const folder = obj.name.endsWith('/')
 
-      items.push({
-        type: folder ? 'folder' : 'file',
-        name,
-        key: obj.name,
-        size: obj.size || 0
-      })
+      items.push(packItem(folder ? 'folder' : 'file', name, obj.name, obj))
     })
 
     // 条数或扫描量到顶，避免把整个桶拉完

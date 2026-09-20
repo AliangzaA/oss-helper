@@ -202,28 +202,42 @@
             <div class="hits">
               <p v-if="finding" class="hint">正在查找…</p>
               <p v-else-if="!findError && !hits.length" class="hint">没有结果</p>
-              <div
-                v-for="item in hits"
-                :key="item.key"
-                class="hit"
-                :class="{ file: item.type === 'file', on: isPicked(item) }"
-                role="button"
-                tabindex="0"
-                @click="onHit(item)"
-                @keydown.enter="onHit(item)"
-              >
-                <input
-                  class="tick"
-                  type="checkbox"
-                  :checked="isPicked(item)"
-                  @click.stop="togglePick(item)"
-                />
-                <svg class="ico" :class="`ico-${kindOf(item)}`" aria-hidden="true">
-                  <use :href="`#ico-${kindOf(item)}`" />
-                </svg>
-                <span class="hit-name">{{ item.name }}</span>
-                <span v-if="item.type === 'file'" class="hit-size">{{ formatSize(item.size) }}</span>
-              </div>
+              <template v-else>
+                <div class="hit hit-head">
+                  <input class="tick" type="checkbox" :checked="allPicked" @click.prevent="toggleAll" />
+                  <span>文件名</span>
+                  <span>文件大小</span>
+                  <span>存储类型</span>
+                  <span>更新时间</span>
+                  <span>操作</span>
+                </div>
+                <div
+                  v-for="item in hits"
+                  :key="item.key"
+                  class="hit"
+                  :class="{ on: isPicked(item) }"
+                >
+                  <input
+                    class="tick"
+                    type="checkbox"
+                    :checked="isPicked(item)"
+                    @click.stop="togglePick(item)"
+                  />
+                  <button class="hit-file" :class="{ folder: item.type === 'folder' }" type="button" @click="onHit(item)">
+                    <svg class="ico" :class="`ico-${kindOf(item)}`" aria-hidden="true">
+                      <use :href="`#ico-${kindOf(item)}`" />
+                    </svg>
+                    <span class="hit-name">{{ item.name }}</span>
+                  </button>
+                  <span class="hit-cell">{{ showSize(item) }}</span>
+                  <span class="hit-cell">{{ showStorage(item) }}</span>
+                  <span class="hit-cell">{{ formatTime(item.time) }}</span>
+                  <span class="hit-ops">
+                    <button class="hit-act" type="button" :disabled="working" @click="askRenameOne(item)">改名</button>
+                    <button class="hit-act danger" type="button" :disabled="working" @click="askRemoveOne(item)">删除</button>
+                  </span>
+                </div>
+              </template>
             </div>
           </section>
           <p v-if="page === 'home' && diskError" class="err">{{ diskError }}</p>
@@ -418,6 +432,9 @@ const truncated = ref(false)
 /** 勾选中的条目，按当前列表过滤，避免删掉已经不在的项 */
 const pickedItems = computed(() => hits.value.filter((item) => picked.value.includes(item.key)))
 
+/** 当前页是否全选 */
+const allPicked = computed(() => hits.value.length > 0 && pickedItems.value.length === hits.value.length)
+
 /** 弹层标题 */
 const nameTitle = computed(() => (nameKind.value === 'rename' ? '改名' : '新建文件夹'))
 
@@ -589,6 +606,69 @@ function formatSize(size) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`
 }
 
+/** 文件夹没有准确大小，跟控制台一样写未统计 */
+function showSize(item) {
+  // 目录下面还有文件，这一层列不出来总和
+  if (!item || item.type === 'folder') {
+    return '未统计'
+  }
+
+  return formatSize(item.size)
+}
+
+/** OSS 存储类型的中文名 */
+function showStorage(item) {
+  // 目录本身没有存储类型
+  if (!item || item.type === 'folder') {
+    return '—'
+  }
+
+  /** SDK 给的存储类型 */
+  const code = String(item.storage || '')
+
+  // 没带就当标准存储
+  if (!code || code === 'Standard') {
+    return '标准存储'
+  }
+
+  // 低频
+  if (code === 'IA') {
+    return '低频访问'
+  }
+
+  // 归档
+  if (code === 'Archive') {
+    return '归档存储'
+  }
+
+  // 冷归档
+  if (code === 'ColdArchive') {
+    return '冷归档'
+  }
+
+  return code
+}
+
+/** 更新时间显示成本地日期时间 */
+function formatTime(iso) {
+  // 目录前缀通常没有时间
+  if (!iso) {
+    return '—'
+  }
+
+  /** 解析后的时间 */
+  const date = new Date(iso)
+
+  // 坏日期不要显示 Invalid Date
+  if (Number.isNaN(date.getTime())) {
+    return '—'
+  }
+
+  /** 补成两位数 */
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 /** 当前目录的上一层，不能高过默认目录 */
 function parentPlace(here, root) {
   /** 默认目录 */
@@ -659,11 +739,10 @@ async function runFind() {
   }
 }
 
-/** 点目录就进去列一层；文件改为勾选 */
+/** 点目录名就进去列一层；文件名不勾选 */
 function onHit(item) {
-  // 文件没有下一层，点一行等于勾选
+  // 文件没有下一层
   if (!item || item.type !== 'folder') {
-    togglePick(item)
     return
   }
 
@@ -691,6 +770,17 @@ function togglePick(item) {
   }
 
   picked.value = picked.value.concat(item.key)
+}
+
+/** 表头勾选：全选或清空 */
+function toggleAll() {
+  // 已经全选就清空
+  if (allPicked.value) {
+    picked.value = []
+    return
+  }
+
+  picked.value = hits.value.map((item) => item.key)
 }
 
 /** 操作结束后重新列当前目录，方便看到结果 */
@@ -910,6 +1000,17 @@ function askRename() {
   nameShow.value = true
 }
 
+/** 行内改名，只动这一项 */
+function askRenameOne(item) {
+  // 空行没有名字
+  if (!item) {
+    return
+  }
+
+  picked.value = [item.key]
+  askRename()
+}
+
 /** 提交新建或改名 */
 async function submitName() {
   // 没选中存储
@@ -974,6 +1075,17 @@ function askRemove() {
   }
 
   dropShow.value = true
+}
+
+/** 行内删除，只动这一项 */
+function askRemoveOne(item) {
+  // 空行删不了
+  if (!item || !item.key) {
+    return
+  }
+
+  picked.value = [item.key]
+  askRemove()
 }
 
 /** 删除勾选的文件和文件夹 */
@@ -1581,23 +1693,100 @@ onUnmounted(() => {
 }
 
 .hit {
-  display: flex;
+  display: grid;
+  grid-template-columns: 22px minmax(140px, 1.6fr) 88px 88px 140px 92px;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
-  margin: 0 0 4px;
+  margin: 0;
   padding: 8px 10px;
   border: 0;
-  border-radius: 8px;
+  border-bottom: 1px solid var(--line);
   background: transparent;
   color: var(--text);
   text-align: left;
-  cursor: pointer;
+}
+
+.hit-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--bg);
 }
 
 .hit:hover,
 .hit.on {
   background: var(--dot);
+}
+
+.hit-head span:last-child {
+  text-align: right;
+}
+
+.hit-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.hit-file.folder {
+  cursor: pointer;
+}
+
+.hit-file.folder .hit-name {
+  color: var(--accent);
+}
+
+.hit-cell {
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hit-ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.hit-act {
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.hit-act:hover {
+  color: var(--accent-hover);
+}
+
+.hit-act.danger {
+  color: var(--danger);
+}
+
+.hit-act:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .ico-src {
