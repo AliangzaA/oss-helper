@@ -1,6 +1,7 @@
-// 主进程：只负责开窗口
-const { app, BrowserWindow, Menu } = require('electron')
+// 主进程：开窗口，并把配置读写交给 persist
+const { app, BrowserWindow, Menu, ipcMain } = require('electron')
 const path = require('path')
+const persist = require('./persist')
 
 /** 主窗口引用，避免被垃圾回收提前关掉 */
 let win = null
@@ -40,10 +41,19 @@ function createWindow() {
   }
 }
 
+/** 页面来读配置、写配置、改目录，都走这里 */
+function bindStore() {
+  ipcMain.handle('store:load', () => persist.loadAll())
+  ipcMain.handle('store:save', (_event, data) => persist.saveStores(data))
+  ipcMain.handle('store:pickDir', () => persist.pickDir())
+  ipcMain.handle('store:resetDir', () => persist.resetDir())
+}
+
 // 应用就绪后再开窗
 app.whenReady().then(() => {
   // 去掉 Electron 在 Windows 上默认的 File / Edit / View / Window
   Menu.setApplicationMenu(null)
+  bindStore()
   createWindow()
 
   // macOS 点 Dock 图标时，没有窗口就再开一个

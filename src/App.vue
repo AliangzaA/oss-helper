@@ -7,7 +7,7 @@
   >
     <n-message-provider>
       <div class="shell">
-        <!-- 左侧：存储切换 + 底部加号 -->
+        <!-- 左侧：上面切存储，底部是存储位置 -->
         <aside class="rail">
           <div class="pill">
             <button
@@ -25,12 +25,27 @@
               +
             </button>
           </div>
+<!--          最下方设置应用的-->
+          <button
+            class="gear"
+            :class="{ on: page === 'settings' }"
+            type="button"
+            title="设置"
+            @click="openSettings"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path
+                fill="currentColor"
+                d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.22-1.12.53-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.5a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.41 1.05.72 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.22 1.12-.53 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.56zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"
+              />
+            </svg>
+          </button>
         </aside>
 
-        <!-- 右侧：主页和配置页在这里切换，占满剩余区域 -->
+        <!-- 右侧：主页、配置页、存储位置在这里切换 -->
         <main class="stage">
-          <!-- 配置页：加号和编辑都走这里，不再弹窗 -->
-          <section v-if="editing" class="form-page">
+          <!-- 配置页：加号和编辑都走这里 -->
+          <section v-if="page === 'form'" class="form-page">
             <header class="form-head">
               <button class="back" type="button" title="返回" @click="close">←</button>
               <h2>{{ title }}</h2>
@@ -80,21 +95,49 @@
                   placeholder="https://oss-cn-hangzhou.aliyuncs.com"
                 />
               </n-form-item>
+              <n-form-item label="默认目录（可选）" path="prefix">
+                <n-input v-model:value="draft.prefix" placeholder="apk/release/，不填就是桶根" />
+              </n-form-item>
             </n-form>
 
+            <p v-if="diskError && page === 'form'" class="err">{{ diskError }}</p>
             <footer class="form-foot">
               <n-button type="primary" @click="save">保存</n-button>
             </footer>
           </section>
 
+          <!-- 设置页：选项从上往下排，以后加项就再接一块 -->
+          <section v-else-if="page === 'settings'" class="settings">
+            <header class="form-head">
+              <button class="back" type="button" title="返回" @click="close">←</button>
+              <h2>设置</h2>
+            </header>
+            <div class="settings-body">
+              <section class="set-block">
+                <h3>存储位置</h3>
+                <p class="hint block">
+                  配置写在这个文件里。换到空目录时，当前列表会写过去；那个目录里已经有文件，就改用那份。
+                </p>
+                <div class="path-row">
+                  <p class="path">{{ filePath || '应用窗口里才会显示路径' }}</p>
+                  <n-button :disabled="!custom" @click="useDefault">恢复默认</n-button>
+                  <n-button type="primary" @click="chooseDir">选择目录</n-button>
+                </div>
+                <p class="path-note">目录选择记在 {{ pointer || 'userData/settings.json' }}，不跟配置文件走。</p>
+                <p v-if="diskError" class="err">{{ diskError }}</p>
+              </section>
+            </div>
+          </section>
+
           <!-- 主页：还没配任何存储 -->
-          <p v-else-if="!current" class="hint">点左下角 + 添加 OSS</p>
+          <p v-else-if="!current" class="hint">点左侧 + 添加 OSS</p>
           <!-- 主页：已选中，只露名字 -->
           <header v-else class="head">
             <strong>{{ current.name }}</strong>
             <span>{{ current.bucket || '未填 Bucket' }}</span>
             <n-button text type="primary" @click="openEdit">编辑</n-button>
           </header>
+          <p v-if="page === 'home' && diskError" class="err">{{ diskError }}</p>
         </main>
       </div>
     </n-message-provider>
@@ -102,22 +145,19 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 /** Naive 中文包，按钮占位符等走中文 */
 import { dateZhCN, zhCN } from 'naive-ui'
 import { overrides, theme } from './theme'
 
-/** 已保存的存储列表，先放两条方便看切换 */
-const stores = ref([
-  emptyItem('1', '生产'),
-  emptyItem('2', '测试')
-])
+/** 已保存的存储列表，启动后从磁盘灌进来 */
+const stores = ref([])
 
 /** 当前选中的存储 id */
-const active = ref('1')
+const active = ref('')
 
-/** 右侧是否停在配置页 */
-const editing = ref(false)
+/** 右侧页面：home 主页 / form 配置 / settings 存储位置 */
+const page = ref('home')
 
 /** 正在编辑的 id；空串表示新建 */
 const editId = ref('')
@@ -127,6 +167,18 @@ const formRef = ref(null)
 
 /** 配置页里正在填的内容 */
 const draft = reactive(emptyItem('', ''))
+
+/** stores.json 的完整路径 */
+const filePath = ref('')
+
+/** settings.json 的完整路径，只记目录选择 */
+const pointer = ref('')
+
+/** 是否用了用户自己选的目录 */
+const custom = ref(false)
+
+/** 读写磁盘失败时的提示 */
+const diskError = ref('')
 
 /** 配置页标题随新建 / 编辑切换 */
 const title = computed(() => (editId.value ? '编辑 OSS' : '添加 OSS'))
@@ -185,6 +237,8 @@ function emptyItem(id, name) {
     region: '',
     /** 自定义访问域名，有它就可以不填 Region */
     endpoint: '',
+    /** 打开文件列表时的起始目录，空就是桶根 */
+    prefix: '',
     /** 桶名 */
     bucket: ''
   }
@@ -207,18 +261,20 @@ function clearValid() {
   })
 }
 
-/** 点左侧圆点：切存储，并离开配置页 */
+/** 点左侧圆点：切存储，并离开配置页或设置页 */
 function pick(id) {
   active.value = id
   // 未保存的草稿丢掉，避免串到另一个存储上
-  editing.value = false
+  page.value = 'home'
+  diskError.value = ''
 }
 
 /** 点加号：右侧换成空白配置页 */
 function openAdd() {
   editId.value = ''
   reset()
-  editing.value = true
+  page.value = 'form'
+  diskError.value = ''
   clearValid()
 }
 
@@ -231,16 +287,117 @@ function openEdit() {
 
   editId.value = current.value.id
   Object.assign(draft, { ...current.value })
-  editing.value = true
+  page.value = 'form'
+  diskError.value = ''
   clearValid()
+}
+
+/** 点齿轮：右侧换成存储位置 */
+function openSettings() {
+  page.value = 'settings'
+  diskError.value = ''
 }
 
 /** 返回主页，不改列表 */
 function close() {
-  editing.value = false
+  page.value = 'home'
+  diskError.value = ''
 }
 
-/** 保存：新建追加并选中，编辑则覆盖原项，然后回到主页 */
+/** 把主进程回传的路径和列表灌进页面 */
+function applyAll(data) {
+  /** 解过密的列表 */
+  const list = Array.isArray(data.stores) ? data.stores : []
+  stores.value = list
+  // 选中项丢了就落到第一条，避免高亮空 id
+  active.value = list.some((item) => item.id === data.active) ? data.active : list[0]?.id || ''
+  filePath.value = data.file || ''
+  pointer.value = data.pointer || ''
+  custom.value = !!data.custom
+}
+
+/** 只更新路径，列表保持页面上这份 */
+function applyPath(data) {
+  filePath.value = data.file || ''
+  pointer.value = data.pointer || ''
+  custom.value = !!data.custom
+}
+
+/** 把当前列表写到现在指向的目录 */
+async function writeDisk(nextActive, list) {
+  // 浏览器预览没有预加载，只能停在内存里
+  if (!window.configApi) {
+    stores.value = list
+    active.value = nextActive
+    diskError.value = '浏览器预览写不了磁盘，请用应用窗口'
+    return false
+  }
+
+  applyAll(await window.configApi.save({ active: nextActive, stores: list }))
+  return true
+}
+
+/** 目标目录没文件时，把当前列表写过去；已有文件就改用那份 */
+async function takeOver(data) {
+  applyPath(data)
+
+  // 那边已经有配置，不能用内存里的盖掉
+  if (data.stores && data.stores.length) {
+    applyAll(data)
+    return
+  }
+
+  await writeDisk(active.value, stores.value)
+}
+
+/** 选择配置存放目录 */
+async function chooseDir() {
+  // 目录框只有应用窗口能弹
+  if (!window.configApi) {
+    diskError.value = '请在应用窗口里选目录'
+    return
+  }
+
+  diskError.value = ''
+
+  try {
+    /** 用户选完后的状态；取消时只有 canceled */
+    const picked = await window.configApi.pickDir()
+
+    // 取消就留在当前目录
+    if (!picked || picked.canceled) {
+      return
+    }
+
+    await takeOver(picked)
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '选择目录失败'
+  }
+}
+
+/** 回到 userData，规则和选择目录一样 */
+async function useDefault() {
+  // 已经是默认目录就不用再写一次指针
+  if (!custom.value) {
+    return
+  }
+
+  // 浏览器预览没有这条接口
+  if (!window.configApi) {
+    diskError.value = '请在应用窗口里操作'
+    return
+  }
+
+  diskError.value = ''
+
+  try {
+    await takeOver(await window.configApi.resetDir())
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '恢复默认失败'
+  }
+}
+
+/** 保存：校验后先落盘，成功再回到主页 */
 async function save() {
   try {
     await formRef.value?.validate()
@@ -251,38 +408,76 @@ async function save() {
 
   /** 名称去掉首尾空格再入库 */
   const name = String(draft.name || '').trim()
-  draft.name = name
+  /** 新建用时间戳，编辑沿用原 id */
+  const id = editId.value || String(Date.now())
+  /** 这一条的最终内容 */
+  const next = { ...draft, id, name }
+  /** 写盘用的完整列表 */
+  let list = stores.value
 
-  // 编辑已有项
+  // 编辑已有项就替换，找不到就追加
   if (editId.value) {
     /** 列表里正在改的那条 */
     const hit = stores.value.find((item) => item.id === editId.value)
 
-    // 列表被删光了就当新建，避免空引用
+    // 还在列表里就覆盖，避免新增一条重复的
     if (hit) {
-      Object.assign(hit, { ...draft, id: editId.value, name })
-      close()
-      return
+      list = stores.value.map((item) => (item.id === editId.value ? next : item))
+    } else {
+      list = [...stores.value, next]
     }
+  } else {
+    list = [...stores.value, next]
   }
 
-  /** 新存储 id，用时间戳够这次演示 */
-  const id = String(Date.now())
-  stores.value.push({ ...draft, id, name })
-  active.value = id
+  diskError.value = ''
+
+  try {
+    /** 落盘是否成功；浏览器预览会失败并留在本页 */
+    const wrote = await writeDisk(id, list)
+
+    // 没写进磁盘就别装成已经保存
+    if (!wrote) {
+      return
+    }
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '写入失败'
+    return
+  }
+
   close()
 }
+
+// 窗口起来就读盘，浏览器预览没有接口就保持空列表
+onMounted(async () => {
+  // 预览页没有预加载
+  if (!window.configApi) {
+    return
+  }
+
+  try {
+    applyAll(await window.configApi.load())
+  } catch (err) {
+    diskError.value = err && err.message ? err.message : '读取配置失败'
+  }
+})
 </script>
 
 <style scoped>
 .shell {
   display: flex;
+  flex: 1;
   height: 100%;
+  min-height: 0;
 }
 
 .rail {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  flex-shrink: 0;
   padding: 12px 10px;
 }
 
@@ -290,7 +485,6 @@ async function save() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  align-self: flex-start;
   gap: 8px;
   padding: 8px 6px;
   border-radius: 999px;
@@ -326,9 +520,28 @@ async function save() {
   background: var(--plus);
 }
 
+.gear {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--dot);
+}
+
+.gear.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .stage {
   flex: 1;
   min-width: 0;
+  height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -340,6 +553,28 @@ async function save() {
   margin: 0;
   color: var(--muted);
   font-size: 14px;
+}
+
+.hint.block {
+  margin-bottom: 18px;
+  line-height: 1.6;
+}
+
+.path {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.err {
+  margin: 12px 0 0;
+  color: var(--danger);
+  font-size: 13px;
 }
 
 .head {
@@ -406,6 +641,47 @@ async function save() {
 .form-foot {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
   padding-top: 12px;
+}
+
+.settings {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.set-block h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.path-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.path-row .path {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.path-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
 }
 </style>
