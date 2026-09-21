@@ -45,3 +45,10 @@ contextBridge.exposeInMainWorld('ossApi', {
   /** 把当前二维码存成 png */
   saveQr: (data) => ipcRenderer.invoke('file:saveImage', data)
 })
+
+contextBridge.exposeInMainWorld('updaterApi', {
+  /** 检查 GitHub 远程最新版本 */
+  check: () => ipcRenderer.invoke('updater:check'),
+  /** 用系统默认浏览器打开外部下载链接 */
+  openUrl: (url) => ipcRenderer.invoke('updater:openUrl', url)
+})

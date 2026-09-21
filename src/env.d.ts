@@ -112,4 +112,21 @@ interface Window {
       file?: string
     }>
   }
+  /** 版本检测与更新相关接口 */
+  updaterApi?: {
+    check: () => Promise<{
+      ok: boolean
+      hasUpdate: boolean
+      currentVersion: string
+      updateInfo: {
+        version: string
+        name: string
+        body: string
+        url: string
+        publishedAt?: string
+      } | null
+      error?: string
+    }>
+    openUrl: (url: string) => Promise<void>
+  }
 }

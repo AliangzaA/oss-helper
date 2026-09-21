@@ -38,7 +38,9 @@ function createClient(config, timeout) {
     accessKeyId: config.accessKeyId,
     accessKeySecret: config.accessKeySecret,
     bucket: config.bucket,
-    timeout: timeout || 60 * 1000
+    timeout: timeout || 60 * 1000,
+    // 强制走 HTTPS 加密通道，避免明文 HTTP (80端口) 的 PUT 请求被本地代理或运营商网络断流
+    secure: true
   }
 
   // 填了 Endpoint 就按它连，不再用 Region 猜
@@ -583,7 +585,17 @@ async function renameFile(client, fromKey, name) {
     return { from: source, to: target }
   }
 
-  await client.copy(target, source)
+  // 复制对象；遇到空闲长连接断开 (socket hang up) 自动重试一次
+  try {
+    await client.copy(target, source)
+  } catch (err) {
+    if (err && (String(err.message).includes('socket hang up') || err.code === 'ECONNRESET')) {
+      await client.copy(target, source)
+    } else {
+      throw err
+    }
+  }
+
   await client.delete(source)
   return { from: source, to: target }
 }
@@ -620,7 +632,16 @@ async function renameFolder(client, fromPrefix, name) {
   for (const key of keys) {
     /** 相对旧前缀的后半段 */
     const tail = key.slice(source.length)
-    await client.copy(`${target}${tail}`, key)
+    // 复制子对象；遇到 socket hang up 自动重试
+    try {
+      await client.copy(`${target}${tail}`, key)
+    } catch (err) {
+      if (err && (String(err.message).includes('socket hang up') || err.code === 'ECONNRESET')) {
+        await client.copy(`${target}${tail}`, key)
+      } else {
+        throw err
+      }
+    }
   }
 
   await removePrefix(client, source)

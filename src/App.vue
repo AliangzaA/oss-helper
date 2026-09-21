@@ -26,22 +26,82 @@
               +
             </button>
           </div>
-<!--          最下方设置应用的-->
-          <button
-            class="gear"
-            :class="{ on: page === 'settings' }"
-            type="button"
-            title="设置"
-            @click="openSettings"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.22-1.12.53-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.5a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.41 1.05.72 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.22 1.12-.53 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.56zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"
-              />
-            </svg>
-          </button>
+          <!-- 最下方操作区：检查更新与应用设置 -->
+          <div class="rail-bottom">
+            <!-- 检查更新按钮 -->
+            <div class="down-wrap">
+              <button
+                class="down-btn"
+                :class="{ on: showUpdateCard, spinning: checkingUpdate }"
+                type="button"
+                :title="hasUpdate ? '发现新版本，点击查看' : '检查更新'"
+                @click="onDownloadClick"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M12 16l4-5h-3V4h-2v7H8l4 5zm-8 2h16v2H4v-2z"
+                  />
+                </svg>
+                <!-- 有新版本时的红点 -->
+                <span v-if="hasUpdate" class="red-dot" aria-label="有新版本" />
+              </button>
+
+              <!-- 无更新时的轻量气泡提示 -->
+              <transition name="fade">
+                <div v-if="updateTip" class="update-tip">
+                  {{ updateTip }}
+                </div>
+              </transition>
+            </div>
+
+            <!-- 最下方设置应用的 -->
+            <button
+              class="gear"
+              :class="{ on: page === 'settings' }"
+              type="button"
+              title="设置"
+              @click="openSettings"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.2 7.2 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.58.22-1.12.53-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.5a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.41 1.05.72 1.63.94l.36 2.54c.05.24.25.42.5.42h3.84c.25 0 .45-.18.5-.42l.36-2.54c.58-.22 1.12-.53 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.56zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"
+                />
+              </svg>
+            </button>
+          </div>
         </aside>
+
+        <!-- 类似编译器风格的左侧更新提示弹窗卡片 -->
+        <transition name="pop-slide">
+          <div
+            v-if="showUpdateCard && updateInfo"
+            class="update-card"
+            role="dialog"
+            aria-label="版本更新提示"
+          >
+            <div class="card-head">
+              <div class="card-title">
+                <span class="card-badge">NEW</span>
+                <strong>发现新版本 {{ updateInfo.version }}</strong>
+              </div>
+              <button class="card-close" type="button" title="关闭" @click="showUpdateCard = false">×</button>
+            </div>
+            <div class="card-body">
+              <p class="card-sub">当前运行版本：v{{ currentAppVersion }}</p>
+              <div v-if="updateInfo.body" class="card-notes">
+                <div class="notes-title">更新说明：</div>
+                <div class="notes-content">{{ updateInfo.body }}</div>
+              </div>
+              <p v-else class="card-hint">发现新版本发布，是否立即前往下载？</p>
+            </div>
+            <div class="card-foot">
+              <button class="btn-cancel" type="button" @click="showUpdateCard = false">暂不</button>
+              <button class="btn-update" type="button" @click="onGoUpdate">立即更新</button>
+            </div>
+          </div>
+        </transition>
 
         <n-dropdown
           trigger="manual"
@@ -424,6 +484,27 @@ const custom = ref(false)
 
 /** 读写磁盘失败时的提示 */
 const diskError = ref('')
+
+/** 是否有新版本可用 */
+const hasUpdate = ref(false)
+
+/** 是否显示左下角更新提示弹窗 */
+const showUpdateCard = ref(false)
+
+/** 新版本详情数据 */
+const updateInfo = ref(null)
+
+/** 当前本地运行的应用版本 */
+const currentAppVersion = ref('1.0.0')
+
+/** 正在检查更新的加载中状态 */
+const checkingUpdate = ref(false)
+
+/** 无更新或检测结果的气泡提示文字 */
+const updateTip = ref('')
+
+/** 气泡提示自动隐藏计时器 */
+let updateTipTimer = null
 
 /** 配置页标题随新建 / 编辑切换 */
 const title = computed(() => (editId.value ? '编辑 OSS' : '添加 OSS'))
@@ -1740,6 +1821,78 @@ function close() {
   diskError.value = ''
 }
 
+/**
+ * 执行版本检测
+ * @param {boolean} isManual 是否为用户手动点击触发
+ */
+async function runCheckUpdate(isManual = false) {
+  if (!window.updaterApi) {
+    return
+  }
+
+  checkingUpdate.value = true
+  try {
+    const res = await window.updaterApi.check()
+    if (res && res.currentVersion) {
+      currentAppVersion.value = res.currentVersion
+    }
+
+    if (res && res.hasUpdate && res.updateInfo) {
+      hasUpdate.value = true
+      updateInfo.value = res.updateInfo
+      showUpdateCard.value = true
+    } else {
+      hasUpdate.value = false
+      if (isManual) {
+        showLatestTip('当前已是最新版本 v' + currentAppVersion.value)
+      }
+    }
+  } catch {
+    if (isManual) {
+      showLatestTip('检测更新失败，请稍后重试')
+    }
+  } finally {
+    checkingUpdate.value = false
+  }
+}
+
+/**
+ * 弹出简易提示气泡
+ * @param {string} msg 提示内容
+ */
+function showLatestTip(msg) {
+  updateTip.value = msg
+  if (updateTipTimer) {
+    clearTimeout(updateTipTimer)
+  }
+  updateTipTimer = setTimeout(() => {
+    updateTip.value = ''
+  }, 2500)
+}
+
+/**
+ * 点击左侧下载图标
+ */
+function onDownloadClick() {
+  // 如果已存在新版本信息，直接展开/折叠更新弹窗
+  if (hasUpdate.value && updateInfo.value) {
+    showUpdateCard.value = !showUpdateCard.value
+    return
+  }
+
+  // 否则发起检查更新
+  runCheckUpdate(true)
+}
+
+/**
+ * 点击弹窗的立即更新按钮，调用系统浏览器打开 Release 页面
+ */
+function onGoUpdate() {
+  if (updateInfo.value?.url && window.updaterApi) {
+    window.updaterApi.openUrl(updateInfo.value.url)
+  }
+}
+
 /** 把主进程回传的路径和列表灌进页面 */
 function applyAll(data) {
   /** 解过密的列表 */
@@ -1993,6 +2146,11 @@ onMounted(async () => {
     offProgress = window.ossApi.onProgress(applyProgress)
   }
 
+  // 启动 2 秒后自动静默检测是否有新版本发布
+  setTimeout(() => {
+    runCheckUpdate(false)
+  }, 2000)
+
   // 预览页没有预加载
   if (!window.configApi) {
     return
@@ -2008,6 +2166,12 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // 清除更新提示计时器
+  if (updateTipTimer) {
+    clearTimeout(updateTipTimer)
+    updateTipTimer = null
+  }
+
   // 窗口拆掉时别再收进度
   if (offProgress) {
     offProgress()
@@ -2083,6 +2247,269 @@ onUnmounted(() => {
   color: #fff;
   font-size: 22px;
   background: var(--plus);
+}
+
+/* 左侧栏底部容器 */
+.rail-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 下载按钮包装器（相对定位供红点和气泡锚定） */
+.down-wrap {
+  position: relative;
+}
+
+/* 下载按钮本体 */
+.down-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--dot);
+  transition: background 0.2s ease, transform 0.15s ease, color 0.2s ease;
+}
+
+.down-btn:hover {
+  background: var(--line);
+  color: #fff;
+}
+
+.down-btn.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.down-btn.spinning svg {
+  animation: spin-icon 1s linear infinite;
+}
+
+@keyframes spin-icon {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 右上角醒目红点 */
+.red-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 2px var(--rail);
+  animation: dot-glow 2s ease-in-out infinite;
+}
+
+@keyframes dot-glow {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px var(--rail), 0 0 4px rgba(255, 77, 79, 0.6);
+  }
+  50% {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 2px var(--rail), 0 0 8px rgba(255, 77, 79, 0.9);
+  }
+}
+
+/* 无更新时的轻量气泡提示 */
+.update-tip {
+  position: absolute;
+  left: 46px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 999;
+  pointer-events: none;
+}
+
+/* 仿编译器风格的左侧更新提示卡片 */
+.update-card {
+  position: fixed;
+  left: 64px;
+  bottom: 24px;
+  width: 310px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.card-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: #ff4d4f;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+}
+
+.card-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+  transition: color 0.15s ease;
+}
+
+.card-close:hover {
+  color: var(--text);
+}
+
+.card-body {
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.card-sub {
+  margin: 0 0 8px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.card-notes {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  max-height: 130px;
+  overflow-y: auto;
+}
+
+.notes-title {
+  font-size: 11px;
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.notes-content {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.card-hint {
+  margin: 0;
+}
+
+.card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  background: rgba(0, 0, 0, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.btn-cancel {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel:hover {
+  background: var(--dot);
+  color: var(--text);
+}
+
+.btn-update {
+  background: var(--accent);
+  border: 0;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-update:hover {
+  background: var(--accent-hover);
+}
+
+.btn-update:active {
+  background: var(--accent-press);
+}
+
+/* 弹窗滑出滑入动画 */
+.pop-slide-enter-active,
+.pop-slide-leave-active {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pop-slide-enter-from,
+.pop-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-16px) scale(0.95);
+}
+
+/* 提示淡入淡出动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-50%) translateX(-6px);
 }
 
 .gear {

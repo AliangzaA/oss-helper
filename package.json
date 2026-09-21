@@ -9,7 +9,12 @@
     "start": "node scripts/dev.js",
     "build": "vite build && electron-builder --win nsis",
     "build:dir": "vite build && electron-builder --win dir",
+    "build:win": "node node_modules/electron/install.js && vite build && electron-builder --win nsis --publish never",
     "build:mac": "node node_modules/electron/install.js && vite build && electron-builder --mac --arm64 --publish never"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AliangzaA/oss-helper.git"
   },
   "dependencies": {
     "ali-oss": "^6.23.0"
@@ -37,6 +42,7 @@
       "preload.js",
       "persist.js",
       "oss.js",
+      "updater.js",
       "dist/**",
       "package.json"
     ],

@@ -1,9 +1,10 @@
 // 主进程：开窗口，并把配置读写交给 persist
-const { app, BrowserWindow, Menu, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const persist = require('./persist')
 const oss = require('./oss')
+const updater = require('./updater')
 
 /** 选中还没传完的本地文件，页面只拿 id，避免随便传一个路径就能读盘 */
 const pending = new Map()
@@ -110,6 +111,15 @@ function bindStore() {
       return { ok: true, canceled: false, file: result.file }
     } catch (err) {
       return { ok: false, canceled: false, error: err && err.message ? err.message : '保存失败' }
+    }
+  })
+
+  // 检查更新与唤起外部下载
+  ipcMain.handle('updater:check', () => updater.checkForUpdates())
+  ipcMain.handle('updater:openUrl', (_event, url) => {
+    // 只允许打开 http 和 https 链接，防止安全隐患
+    if (url && (String(url).startsWith('https://') || String(url).startsWith('http://'))) {
+      shell.openExternal(url)
     }
   })
   ipcMain.handle('oss:find', async (_event, payload) => {
@@ -334,10 +344,49 @@ function bindStore() {
   })
 }
 
+/** 配置应用顶栏菜单：macOS 仅保留必要主菜单并隐藏 Edit 保持快捷键生效，Windows/Linux 清空菜单 */
+function setupAppMenu() {
+  // macOS 环境下定制极简菜单，隐藏 File / Edit / View / Window
+  if (process.platform === 'darwin') {
+    /** 极简菜单模板：保留应用主菜单，Edit 菜单隐藏以保持快捷键可用 */
+    const template = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about', label: `关于 ${app.name}` },
+          { type: 'separator' },
+          { role: 'hide', label: `隐藏 ${app.name}` },
+          { role: 'hideOthers', label: '隐藏其他' },
+          { role: 'unhide', label: '显示全部' },
+          { type: 'separator' },
+          { role: 'quit', label: `退出 ${app.name}` }
+        ]
+      },
+      {
+        // 设为不可见：顶栏不显示，但保证 Cmd+C / Cmd+V / Cmd+A / Cmd+Z 等快捷键正常响应
+        label: 'Edit',
+        visible: false,
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' }
+        ]
+      }
+    ]
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+  } else {
+    // Windows / Linux 直接清空窗口菜单
+    Menu.setApplicationMenu(null)
+  }
+}
+
 // 应用就绪后再开窗
 app.whenReady().then(() => {
-  // 去掉 Electron 在 Windows 上默认的 File / Edit / View / Window
-  Menu.setApplicationMenu(null)
+  setupAppMenu()
   bindStore()
   createWindow()
 
