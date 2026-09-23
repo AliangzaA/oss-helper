@@ -837,6 +837,75 @@ async function listLogos(config) {
   return { files }
 }
 
+/**
+ * 读取 OSS 存储桶中指定 key 的文本/JSON 文件内容
+ * @param {Object} config - OSS 连接配置
+ * @param {string} key - 对象在桶中的完整路径
+ * @returns {Promise<{ok: boolean, error: string, content: string}>}
+ */
+async function readText(config, key) {
+  /** 校验配置完整性 */
+  const err = checkConfig(config)
+  if (err) {
+    return { ok: false, error: err, content: '' }
+  }
+
+  // 必须指定有效的对象路径
+  if (!key || typeof key !== 'string') {
+    return { ok: false, error: '缺少文件路径', content: '' }
+  }
+
+  try {
+    /** 实例化的 OSS 客户端 */
+    const client = createClient(config, 15000)
+    /** 从 OSS 获取对象数据 */
+    const got = await client.get(key)
+    /** 文件内容字节缓冲区 */
+    const buf = got && got.content
+    /** 转为 UTF-8 格式的文本字符串 */
+    const content = buf ? buf.toString('utf-8') : ''
+    return { ok: true, error: '', content }
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : '读取文件失败', content: '' }
+  }
+}
+
+/**
+ * 将文本内容上传或覆盖到 OSS 存储桶指定 key
+ * @param {Object} config - OSS 连接配置
+ * @param {string} key - 对象在桶中的完整路径
+ * @param {string} text - 待保存的文本或 JSON 字符串
+ * @returns {Promise<{ok: boolean, error: string}>}
+ */
+async function saveText(config, key, text) {
+  /** 校验配置完整性 */
+  const err = checkConfig(config)
+  if (err) {
+    return { ok: false, error: err }
+  }
+
+  // 必须指定有效的对象路径
+  if (!key || typeof key !== 'string') {
+    return { ok: false, error: '缺少文件路径' }
+  }
+
+  try {
+    /** 实例化的 OSS 客户端 */
+    const client = createClient(config, 20000)
+    /** 构造 UTF-8 字节缓冲区 */
+    const buf = Buffer.from(String(text || ''), 'utf-8')
+    /** 上传对象并声明 Content-Type 为 application/json */
+    await client.put(key, buf, {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8'
+      }
+    })
+    return { ok: true, error: '' }
+  } catch (e) {
+    return { ok: false, error: e && e.message ? e.message : '保存文件失败' }
+  }
+}
+
 module.exports = {
   find,
   ensureDir,
@@ -844,5 +913,7 @@ module.exports = {
   mkdir,
   removeItems,
   rename,
-  listLogos
+  listLogos,
+  readText,
+  saveText
 }

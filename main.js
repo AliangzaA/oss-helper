@@ -342,6 +342,47 @@ function bindStore() {
       }
     }
   })
+  ipcMain.handle('oss:readText', async (_event, payload) => {
+    /** 当前匹配的 OSS 配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 检查配置是否存在
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置', content: '' }
+    }
+
+    try {
+      /** 从 OSS 获取文本内容 */
+      const data = await oss.readText(hit, payload && payload.key)
+      return data
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : '读取文件失败',
+        content: ''
+      }
+    }
+  })
+  ipcMain.handle('oss:saveText', async (_event, payload) => {
+    /** 当前匹配的 OSS 配置 */
+    const hit = storeById(payload && payload.id)
+
+    // 检查配置是否存在
+    if (!hit) {
+      return { ok: false, error: '没有这条 OSS 配置' }
+    }
+
+    try {
+      /** 保存文本至 OSS 覆盖同名对象 */
+      const data = await oss.saveText(hit, payload && payload.key, payload && payload.text)
+      return data
+    } catch (err) {
+      return {
+        ok: false,
+        error: err && err.message ? err.message : '保存文件失败'
+      }
+    }
+  })
 }
 
 /** 配置应用顶栏菜单：macOS 仅保留必要主菜单并隐藏 Edit 保持快捷键生效，Windows/Linux 清空菜单 */

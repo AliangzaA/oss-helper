@@ -250,6 +250,7 @@
             <div class="act-row">
               <n-button :disabled="working" @click="askUpload">上传</n-button>
               <n-button :disabled="working" @click="askMkdir">新建文件夹</n-button>
+              <n-button :disabled="working" @click="askCreateConfig">+ 配置文件</n-button>
               <n-button :disabled="working || pickedItems.length !== 1" @click="askRename">改名</n-button>
               <n-button :disabled="working || !pickedItems.length" @click="askRemove">删除</n-button>
               <span class="hint">已选 {{ pickedItems.length }}</span>
@@ -278,6 +279,9 @@
               <symbol id="ico-apk" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M8.2 8.2 6.4 6.4l1.1-1.1 1.9 1.9a6 6 0 0 1 5.2 0l1.9-1.9 1.1 1.1-1.8 1.8A6 6 0 0 1 18 12.5V17a2 2 0 0 1-2 2h-1v-4H9v4H8a2 2 0 0 1-2-2v-4.5a6 6 0 0 1 2.2-4.3zM9.5 12.2a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm5 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2z" />
               </symbol>
+              <symbol id="ico-config" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.44.17-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+              </symbol>
             </svg>
             <div class="hits">
               <p v-if="finding" class="hint">正在查找…</p>
@@ -303,16 +307,31 @@
                     :checked="isPicked(item)"
                     @click.stop="togglePick(item)"
                   />
-                  <button class="hit-file" :class="{ folder: item.type === 'folder' }" type="button" @click="onHit(item)">
+                  <button
+                    class="hit-file"
+                    :class="{ folder: item.type === 'folder', 'config-file': kindOf(item) === 'config' }"
+                    type="button"
+                    @click="onHit(item)"
+                  >
                     <svg class="ico" :class="`ico-${kindOf(item)}`" aria-hidden="true">
                       <use :href="`#ico-${kindOf(item)}`" />
                     </svg>
                     <span class="hit-name">{{ item.name }}</span>
+                    <span v-if="kindOf(item) === 'config'" class="config-tag">配置文件</span>
                   </button>
                   <span class="hit-cell">{{ showSize(item) }}</span>
                   <span class="hit-cell">{{ showStorage(item) }}</span>
                   <span class="hit-cell">{{ formatTime(item.time) }}</span>
                   <span class="hit-ops">
+                    <button
+                      v-if="kindOf(item) === 'config'"
+                      class="hit-act config-act"
+                      type="button"
+                      :disabled="working"
+                      @click="openConfigModal(item)"
+                    >
+                      配置
+                    </button>
                     <button class="hit-act" type="button" :disabled="working" @click="askRenameOne(item)">改名</button>
                     <button
                       v-if="item.type === 'file'"
@@ -393,10 +412,11 @@
       </n-modal>
 
       <!-- 文件公开地址和二维码，外网域名或自定义域名二选一 -->
-      <n-modal v-model:show="codeShow" preset="card" title="二维码" style="width: 420px">
+      <n-modal v-model:show="codeShow" preset="card" title="二维码" style="width: 460px">
         <n-radio-group v-model:value="codeKind" class="code-kind" name="codeKind">
-          <n-radio value="oss">外网域名</n-radio>
-          <n-radio value="custom">自定义域名(可以下载APK文件)</n-radio>
+          <n-radio v-if="isApkItem" value="smart">智能分流(国内直下/海外跳商店)</n-radio>
+          <n-radio value="custom">自定义域名直链</n-radio>
+          <n-radio value="oss">外网域名直链</n-radio>
         </n-radio-group>
         <p v-if="codeHint" class="err">{{ codeHint }}</p>
         <p v-else-if="codeNote" class="hint where">{{ codeNote }}</p>
@@ -440,6 +460,70 @@
           <n-space justify="end">
             <n-button @click="dropShow = false">取消</n-button>
             <n-button type="primary" :loading="working" @click="removePicked">删除</n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
+      <!-- 应用分发配置表单弹窗 -->
+      <n-modal
+        v-model:show="configShow"
+        preset="card"
+        title="应用分发配置 (config.json)"
+        style="width: 520px"
+      >
+        <n-space vertical size="medium">
+          <div class="config-modal-header">
+            <span class="hint" style="font-size: 13px;">配置当前应用商店跳转地址与 APK 安装包</span>
+            <n-radio-group v-model:value="configMode" size="small">
+              <n-radio-button value="form">表单模式</n-radio-button>
+              <n-radio-button value="raw">JSON 源码</n-radio-button>
+            </n-radio-group>
+          </div>
+
+          <!-- 可视化表单模式 -->
+          <template v-if="configMode === 'form'">
+            <n-form label-placement="left" label-width="110">
+              <n-form-item label="应用名称">
+                <n-input v-model:value="configDraft.name" placeholder="例如：大湃" clearable />
+              </n-form-item>
+              <n-form-item label="苹果商店链接">
+                <n-input v-model:value="configDraft.appleUrl" placeholder="https://apps.apple.com/..." clearable />
+              </n-form-item>
+              <n-form-item label="谷歌商店链接">
+                <n-input v-model:value="configDraft.googleUrl" placeholder="https://play.google.com/store/apps/details?id=..." clearable />
+              </n-form-item>
+              <n-form-item label="默认 APK (可选)">
+                <n-auto-complete
+                  v-model:value="configDraft.apk"
+                  :options="apkOptions"
+                  placeholder="留空即可；直接点击任意 APK 的二维码更灵活"
+                  clearable
+                />
+              </n-form-item>
+            </n-form>
+            <p class="hint" style="font-size: 12px; margin-top: -8px;">
+              💡 推荐直接点击对应 APK 的「二维码」，系统会自动绑定本配置并直下该文件。此处可留空。
+            </p>
+          </template>
+
+          <!-- 源码编辑模式 -->
+          <template v-else>
+            <n-input
+              v-model:value="configRawText"
+              type="textarea"
+              :autosize="{ minRows: 8, maxRows: 14 }"
+              placeholder="标准 JSON 格式代码"
+              style="font-family: monospace; font-size: 13px;"
+            />
+          </template>
+
+          <p v-if="configError" class="err">{{ configError }}</p>
+        </n-space>
+
+        <template #footer>
+          <n-space justify="end">
+            <n-button :disabled="configSaving" @click="configShow = false">取消</n-button>
+            <n-button type="primary" :loading="configSaving" @click="submitConfigModal">保存到 OSS</n-button>
           </n-space>
         </template>
       </n-modal>
@@ -564,6 +648,39 @@ const nameKind = ref('mkdir')
 /** 删除确认是否打开 */
 const dropShow = ref(false)
 
+/** 配置文件弹窗是否打开 */
+const configShow = ref(false)
+
+/** 配置文件保存中状态 */
+const configSaving = ref(false)
+
+/** 配置文件弹窗编辑模式：form 表单模式，raw 源码模式 */
+const configMode = ref('form')
+
+/** 配置文件表单数据草稿 */
+const configDraft = reactive({
+  name: '',
+  appleUrl: '',
+  googleUrl: '',
+  apk: ''
+})
+
+/** 配置文件源码文本 */
+const configRawText = ref('')
+
+/** 配置文件正在编辑的 key 路径 */
+const configKey = ref('')
+
+/** 配置文件错误提示 */
+const configError = ref('')
+
+/** 当前目录下所有 APK 文件的名称列表，供下拉候选 */
+const apkOptions = computed(() => {
+  return hits.value
+    .filter((item) => item && item.type === 'file' && String(item.name || '').toLowerCase().endsWith('.apk'))
+    .map((item) => ({ label: item.name, value: item.name }))
+})
+
 /** 二维码弹窗是否打开 */
 const codeShow = ref(false)
 
@@ -656,6 +773,12 @@ function kindOf(item) {
 
   /** 文件名最后一段扩展名 */
   const name = String(item.name || '')
+
+  // 配置文件单独标出来 (config.json)
+  if (name.toLowerCase() === 'config.json') {
+    return 'config'
+  }
+
   /** 最后一个点，没有就不是扩展名 */
   const dot = name.lastIndexOf('.')
   /** 小写扩展名 */
@@ -963,16 +1086,20 @@ async function runFind() {
   }
 }
 
-/** 点目录名就进去列一层；文件名不勾选 */
+/** 点目录名就进去列一层；点配置文件打开表单；其他文件不勾选 */
 function onHit(item) {
-  // 文件没有下一层
-  if (!item || item.type !== 'folder') {
+  // 目录进入下一层
+  if (item && item.type === 'folder') {
+    place.value = item.key
+    keyword.value = ''
+    runFind()
     return
   }
 
-  place.value = item.key
-  keyword.value = ''
-  runFind()
+  // 点击配置文件直接打开表单编辑
+  if (item && kindOf(item) === 'config') {
+    openConfigModal(item)
+  }
 }
 
 /** 这一项是否已勾选 */
@@ -1362,6 +1489,22 @@ function fileUrl(config, key, kind) {
   /** 编码后的对象路径 */
   const path = encodeKey(key)
 
+  // 智能分流模式走自定义域名下的 [默认目录/]download.html?apk=...
+  if (kind === 'smart') {
+    /** 配置里的绑定域名 */
+    const host = String((config && config.domain) || '').trim()
+
+    // 没填就拼不出
+    if (!host) {
+      return ''
+    }
+
+    /** 默认目录前缀，如 'apk/' */
+    const prefix = String((config && config.prefix) || '').trim().replace(/^\/+/, '')
+
+    return `https://${host}/${prefix}download.html?apk=${path}`
+  }
+
   // 自定义域名走绑定的主机
   if (kind === 'custom') {
     /** 配置里的绑定域名 */
@@ -1388,6 +1531,11 @@ function fileUrl(config, key, kind) {
   return `https://${bucket}.${region}.aliyuncs.com/${path}`
 }
 
+/** 当前正在生成二维码的文件是否为 APK 安装包 */
+const isApkItem = computed(() => {
+  return String(codeItem.value?.name || '').toLowerCase().endsWith('.apk')
+})
+
 /** 当前弹窗里的文件地址 */
 const codeUrl = computed(() => {
   // 还没选文件或没选存储
@@ -1400,6 +1548,11 @@ const codeUrl = computed(() => {
 
 /** 拼不出地址时的原因 */
 const codeHint = computed(() => {
+  // 智能分流没填自定义域名
+  if (codeKind.value === 'smart' && !String(current.value?.domain || '').trim()) {
+    return '智能分流需要在 OSS 配置里填写自定义域名'
+  }
+
   // 自定义域名没填
   if (codeKind.value === 'custom' && !String(current.value?.domain || '').trim()) {
     return '先在 OSS 配置里填自定义域名'
@@ -1413,20 +1566,25 @@ const codeHint = computed(() => {
   return ''
 })
 
-/** APK 用默认域名时的提醒 */
+/** APK 用不同模式时的提醒 */
 const codeNote = computed(() => {
   /** 是不是安装包 */
   const apk = String(codeItem.value?.name || '').toLowerCase().endsWith('.apk')
 
+  // 智能分流码提示
+  if (apk && codeKind.value === 'smart') {
+    return '💡 智能分流码：国内安卓扫码直接下载本文件，苹果/海外安卓自动跳转应用商店'
+  }
+
   // APK 用默认域名经常被拦
   if (apk && codeKind.value === 'oss') {
-    return 'APK 用阿里云默认域名经常打不开，建议改用自定义域名'
+    return 'APK 用阿里云默认域名经常打不开，建议改用自定义域名或智能分流'
   }
 
   return ''
 })
 
-/** 打开二维码，安装包默认走自定义域名 */
+/** 打开二维码，安装包默认优先使用智能分流码 */
 function askCode(item) {
   // 目录没有公开下载地址
   if (!item || item.type === 'folder') {
@@ -1436,11 +1594,13 @@ function askCode(item) {
   codeItem.value = item
   codeCopied.value = false
   codeSaved.value = false
-  /** 安装包优先用绑定域名 */
+  /** 是不是安装包 */
   const apk = String(item.name || '').toLowerCase().endsWith('.apk')
 
-  // 填过自定义域名的 APK 直接选它
+  // 安装包且配了自定义域名，默认优先生成智能分流码
   if (apk && String(current.value?.domain || '').trim()) {
+    codeKind.value = 'smart'
+  } else if (apk) {
     codeKind.value = 'custom'
   } else {
     codeKind.value = 'oss'
@@ -1655,6 +1815,194 @@ async function saveCode() {
     codeLogoErr.value = err && err.message ? err.message : '保存失败'
   } finally {
     codeSaving.value = false
+  }
+}
+
+/** 打开配置文件编辑弹窗 */
+async function openConfigModal(item) {
+  // 没选中存储直接返回
+  if (!current.value) {
+    return
+  }
+
+  // 预加载接口不可用
+  if (!window.ossApi || !window.ossApi.readText) {
+    findError.value = '请完全退出后重新打开应用以启用配置文件功能'
+    return
+  }
+
+  /** 对象在桶里的完整 key */
+  const key = item ? item.key : `${place.value || current.value.prefix || ''}config.json`
+  configKey.value = key
+  configError.value = ''
+  configMode.value = 'form'
+  configSaving.value = false
+
+  // 从当前目录推测默认应用名称（如 "apk/大湃/" -> "大湃"）
+  let defaultAppName = ''
+  /** 当前所在路径字符串 */
+  const rawPath = String(place.value || current.value.prefix || '').replace(/\/$/, '')
+  /** 分割后的路径段 */
+  const parts = rawPath ? rawPath.split('/') : []
+  if (parts.length && parts[parts.length - 1]) {
+    defaultAppName = parts[parts.length - 1]
+  }
+
+  // 初始化草稿
+  configDraft.name = defaultAppName
+  configDraft.appleUrl = ''
+  configDraft.googleUrl = ''
+  /** 列表中检测到的首个 APK 文件名 */
+  const firstApk = apkOptions.value[0]?.value || ''
+  configDraft.apk = firstApk
+  configRawText.value = ''
+
+  configShow.value = true
+
+  // 如果点击的是已有文件，从 OSS 读内容并回填
+  if (item) {
+    configSaving.value = true
+    try {
+      /** 从 OSS 读取到的文本返回结果 */
+      const res = await window.ossApi.readText({
+        id: current.value.id,
+        key: item.key
+      })
+
+      if (!res.ok) {
+        configError.value = res.error || '读取配置文件失败'
+        return
+      }
+
+      configRawText.value = res.content || '{}'
+
+      // 尝试解析 JSON 并填充表单
+      try {
+        const parsed = JSON.parse(res.content)
+        if (parsed && typeof parsed === 'object') {
+          configDraft.name = parsed.name || defaultAppName
+          configDraft.appleUrl = parsed.appleUrl || ''
+          configDraft.googleUrl = parsed.googleUrl || ''
+          configDraft.apk = parsed.apk || firstApk
+        }
+      } catch {
+        // 如果文件不是合法 JSON，切到源码模式由用户直接修改
+        configMode.value = 'raw'
+      }
+    } catch (err) {
+      configError.value = err && err.message ? err.message : '读取配置文件失败'
+    } finally {
+      configSaving.value = false
+    }
+  } else {
+    // 新建模式，根据草稿生成初始源码
+    configRawText.value = JSON.stringify(
+      {
+        name: configDraft.name,
+        appleUrl: configDraft.appleUrl,
+        googleUrl: configDraft.googleUrl,
+        apk: configDraft.apk
+      },
+      null,
+      2
+    )
+  }
+}
+
+/** 快捷新建配置文件 */
+function askCreateConfig() {
+  /** 检查当前目录下是否已存在 config.json */
+  const existing = hits.value.find(
+    (item) => item && item.type === 'file' && String(item.name || '').toLowerCase() === 'config.json'
+  )
+
+  // 已有则直接打开编辑已有文件
+  if (existing) {
+    openConfigModal(existing)
+    return
+  }
+
+  // 没有则以新建模式打开
+  openConfigModal(null)
+}
+
+/** 监听模式切换，同步表单与源码 */
+watch(configMode, (newMode) => {
+  if (newMode === 'raw') {
+    /** 当前表单组装出的对象 */
+    const data = {
+      name: String(configDraft.name || '').trim(),
+      appleUrl: String(configDraft.appleUrl || '').trim(),
+      googleUrl: String(configDraft.googleUrl || '').trim(),
+      apk: String(configDraft.apk || '').trim()
+    }
+    configRawText.value = JSON.stringify(data, null, 2)
+  } else {
+    try {
+      /** 解析源码为对象 */
+      const parsed = JSON.parse(configRawText.value)
+      if (parsed && typeof parsed === 'object') {
+        configDraft.name = parsed.name || ''
+        configDraft.appleUrl = parsed.appleUrl || ''
+        configDraft.googleUrl = parsed.googleUrl || ''
+        configDraft.apk = parsed.apk || ''
+        configError.value = ''
+      }
+    } catch {
+      configError.value = '当前 JSON 格式有误，无法切回表单'
+    }
+  }
+})
+
+/** 提交并保存配置文件至 OSS */
+async function submitConfigModal() {
+  // 未选择存储或没有目标 key
+  if (!current.value || !configKey.value) {
+    return
+  }
+
+  /** 最终待保存的 JSON 文本 */
+  let finalJson = ''
+  if (configMode.value === 'form') {
+    const data = {
+      name: String(configDraft.name || '').trim(),
+      appleUrl: String(configDraft.appleUrl || '').trim(),
+      googleUrl: String(configDraft.googleUrl || '').trim(),
+      apk: String(configDraft.apk || '').trim()
+    }
+    finalJson = JSON.stringify(data, null, 2)
+  } else {
+    try {
+      const parsed = JSON.parse(configRawText.value)
+      finalJson = JSON.stringify(parsed, null, 2)
+    } catch (err) {
+      configError.value = 'JSON 格式不合法：' + (err && err.message ? err.message : '')
+      return
+    }
+  }
+
+  configSaving.value = true
+  configError.value = ''
+
+  try {
+    /** 调用主进程将 JSON 保存覆盖至 OSS */
+    const res = await window.ossApi.saveText({
+      id: current.value.id,
+      key: configKey.value,
+      text: finalJson
+    })
+
+    if (!res.ok) {
+      configError.value = res.error || '保存失败'
+      return
+    }
+
+    configShow.value = false
+    await refreshList()
+  } catch (err) {
+    configError.value = err && err.message ? err.message : '保存失败'
+  } finally {
+    configSaving.value = false
   }
 }
 
@@ -2666,7 +3014,7 @@ onUnmounted(() => {
 
 .hit {
   display: grid;
-  grid-template-columns: 22px minmax(120px, 1.4fr) 80px 80px 130px 148px;
+  grid-template-columns: 22px minmax(120px, 1.4fr) 80px 80px 130px 180px;
   align-items: center;
   gap: 8px;
   width: 100%;
@@ -2800,6 +3148,47 @@ onUnmounted(() => {
 
 .ico-apk {
   color: #7dce6a;
+}
+
+.ico-config {
+  color: #38bdf8;
+}
+
+.hit-file.config-file {
+  cursor: pointer;
+}
+
+.hit-file.config-file:hover .hit-name {
+  color: #38bdf8;
+}
+
+.config-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  font-size: 11px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  line-height: 16px;
+}
+
+.hit-act.config-act {
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.hit-act.config-act:hover {
+  color: #7dd3fc;
+}
+
+.config-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .hit-name {

@@ -43,7 +43,11 @@ contextBridge.exposeInMainWorld('ossApi', {
   /** 列出桶里 Logo 目录的图片 */
   logos: (data) => ipcRenderer.invoke('oss:logos', data),
   /** 把当前二维码存成 png */
-  saveQr: (data) => ipcRenderer.invoke('file:saveImage', data)
+  saveQr: (data) => ipcRenderer.invoke('file:saveImage', data),
+  /** 读取 OSS 上的文本或 JSON 文件内容 */
+  readText: (data) => ipcRenderer.invoke('oss:readText', data),
+  /** 保存文本或 JSON 覆盖 OSS 上的文件 */
+  saveText: (data) => ipcRenderer.invoke('oss:saveText', data)
 })
 
 contextBridge.exposeInMainWorld('updaterApi', {
