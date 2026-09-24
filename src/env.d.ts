@@ -78,8 +78,24 @@ interface Window {
     pick: () => Promise<{
       ok: boolean
       canceled?: boolean
+      error?: string
       files: Array<{ id: string; name: string; size: number }>
     }>
+    /** 选文件夹并展开为待传文件列表 */
+    pickFolder: () => Promise<{
+      ok: boolean
+      canceled?: boolean
+      error?: string
+      files: Array<{ id: string; name: string; size: number }>
+    }>
+    /** 拖拽进来的本地路径登记到主进程待传（支持文件夹） */
+    addFiles: (paths: string[]) => Promise<{
+      ok: boolean
+      error?: string
+      files: Array<{ id: string; name: string; size: number }>
+    }>
+    /** 从拖拽 File 取出本机绝对路径（Electron） */
+    getPathForFile: (file: File) => string
     forget: (ids: string[]) => Promise<{ ok: boolean }>
     upload: (data: { id: string; place: string; fileIds: string[] }) => Promise<{
       ok: boolean
@@ -103,7 +119,7 @@ interface Window {
     logos: (data: { id: string }) => Promise<{
       ok: boolean
       error?: string
-      files: Array<{ name: string; src: string }>
+      files: Array<{ name: string; src: string; key?: string }>
     }>
     saveQr: (data: { name: string; dataUrl: string }) => Promise<{
       ok: boolean

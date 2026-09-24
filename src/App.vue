@@ -114,6 +114,18 @@
           @clickoutside="menuShow = false"
         />
 
+        <!-- 文件列表右键快捷操作 -->
+        <n-dropdown
+          trigger="manual"
+          placement="bottom-start"
+          :show="hitMenuShow"
+          :x="hitMenuX"
+          :y="hitMenuY"
+          :options="hitMenuOptions"
+          @select="onHitMenu"
+          @clickoutside="hitMenuShow = false"
+        />
+
         <!-- 右侧：主页、配置页、存储位置在这里切换 -->
         <main class="stage">
           <!-- 配置页：加号和编辑都走这里 -->
@@ -283,9 +295,17 @@
                 <path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.44.17-.48.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
               </symbol>
             </svg>
-            <div class="hits">
+            <div
+              class="hits"
+              :class="{ 'is-drag': listDrag }"
+              @dragenter="onListDragEnter"
+              @dragover="onListDragOver"
+              @dragleave="onListDragLeave"
+              @drop="onListDrop"
+            >
+              <div v-if="listDrag" class="hits-drag">松开以上传（支持文件夹）</div>
               <p v-if="finding" class="hint">正在查找…</p>
-              <p v-else-if="!findError && !hits.length" class="hint">没有结果</p>
+              <p v-else-if="!findError && !hits.length" class="hint">没有结果，也可把文件或文件夹拖到这里上传</p>
               <template v-else>
                 <div class="hit hit-head">
                   <input class="tick" type="checkbox" :checked="allPicked" @click.prevent="toggleAll" />
@@ -300,6 +320,7 @@
                   :key="item.key"
                   class="hit"
                   :class="{ on: isPicked(item) }"
+                  @contextmenu.prevent="openHitMenu($event, item)"
                 >
                   <input
                     class="tick"
@@ -367,7 +388,7 @@
       <n-modal
         :show="upShow"
         preset="card"
-        title="上传文件"
+        title="上传"
         style="width: 460px"
         :mask-closable="!working"
         :close-on-esc="!working"
@@ -376,10 +397,13 @@
       >
         <div class="up-head">
           <p class="hint">上传到 {{ showPlace(place) }}</p>
-          <n-button size="small" :disabled="working || upDone" @click="addUploads">添加文件</n-button>
+          <n-space :size="8">
+            <n-button size="small" :disabled="working || upDone" @click="addUploads">添加文件</n-button>
+            <n-button size="small" :disabled="working || upDone" @click="addFolders">添加文件夹</n-button>
+          </n-space>
         </div>
         <p v-if="upError" class="err">{{ upError }}</p>
-        <p v-else-if="!upFiles.length" class="up-empty">还没有文件</p>
+        <p v-else-if="!upFiles.length" class="up-empty">还没有文件，可添加文件 / 文件夹，或从列表拖入</p>
         <div v-else class="up-list">
           <div v-for="file in upFiles" :key="file.id" class="up-row">
             <svg class="ico" :class="`ico-${kindOf({ type: 'file', name: file.name })}`" aria-hidden="true">
@@ -420,7 +444,6 @@
         </n-radio-group>
         <p v-if="codeHint" class="err">{{ codeHint }}</p>
         <p v-else-if="codeNote" class="hint where">{{ codeNote }}</p>
-        <p v-if="codeUrl" class="code-url">{{ codeUrl }}</p>
         <p v-if="codeLogoErr" class="err">{{ codeLogoErr }}</p>
         <div v-else-if="codeLogos.length" class="logo-pick">
           <p class="hint">中间 Logo</p>
@@ -612,6 +635,56 @@ const menuOptions = computed(() => {
   return [{ label: item ? `删除 ${item.name}` : '删除', key: 'drop' }]
 })
 
+/** 文件列表右键菜单是否打开 */
+const hitMenuShow = ref(false)
+
+/** 文件列表右键菜单位置 */
+const hitMenuX = ref(0)
+const hitMenuY = ref(0)
+
+/** 右键点中的文件/文件夹 */
+const hitMenuItem = ref(null)
+
+/** 文件列表右键菜单项 */
+const hitMenuOptions = computed(() => {
+  /** 当前右键的那一项 */
+  const item = hitMenuItem.value
+  // 没有点中就不显示
+  if (!item) {
+    return []
+  }
+
+  /** 菜单条目 */
+  const options = []
+
+  // 文件夹可以打开进入
+  if (item.type === 'folder') {
+    options.push({ label: '打开', key: 'open' })
+  }
+
+  // config.json 快捷进编辑
+  if (kindOf(item) === 'config') {
+    options.push({ label: '编辑配置', key: 'config' })
+  }
+
+  options.push({ label: '改名', key: 'rename', disabled: working.value })
+
+  // 只有文件才有公开地址二维码
+  if (item.type === 'file') {
+    options.push({ label: '二维码', key: 'code', disabled: working.value })
+  }
+
+  /** 多选时删除文案带数量 */
+  const multi = picked.value.includes(item.key) && pickedItems.value.length > 1
+  options.push({
+    label: multi ? `删除选中的 ${pickedItems.value.length} 项` : '删除',
+    key: 'remove',
+    disabled: working.value
+  })
+
+  return options
+})
+
 /** 当前选中的那条配置 */
 const current = computed(() => stores.value.find((item) => item.id === active.value) || null)
 
@@ -728,6 +801,12 @@ const upDone = ref(false)
 
 /** 上传弹窗里的错误 */
 const upError = ref('')
+
+/** 文件列表是否正被拖入本地文件 */
+const listDrag = ref(false)
+
+/** 拖入嵌套计数，避免子元素 dragleave 把高亮闪掉 */
+let dragDepth = 0
 
 /** 取消进度订阅 */
 let offProgress = null
@@ -1159,6 +1238,150 @@ function askUpload() {
   upShow.value = true
 }
 
+/**
+ * 把主进程登记好的文件合进弹窗列表，同名只留最新
+ * @param {Array<{ id: string, name: string, size: number }>} files
+ */
+async function mergeUpFiles(files) {
+  for (const file of files || []) {
+    /** 同名的旧条目，OSS 上也会被后一个盖掉 */
+    const old = upFiles.value.find((item) => item.name === file.name)
+
+    // 同名只留最新一次选择
+    if (old && window.ossApi && window.ossApi.forget) {
+      await window.ossApi.forget([old.id])
+      upFiles.value = upFiles.value.filter((item) => item.id !== old.id)
+    }
+
+    upFiles.value = upFiles.value.concat({
+      id: file.id,
+      name: file.name,
+      size: file.size,
+      percent: 0,
+      error: ''
+    })
+  }
+}
+
+/** dataTransfer 里是不是带着本地文件 */
+function hasFileDrag(e) {
+  const types = e && e.dataTransfer && e.dataTransfer.types
+  // 没有 types 就当不是拖文件
+  if (!types) {
+    return false
+  }
+  return Array.from(types).includes('Files')
+}
+
+/** 文件拖进列表区 */
+function onListDragEnter(e) {
+  // 没选存储或正在干活时不接
+  if (!current.value || working.value) {
+    return
+  }
+  // 不是文件拖拽就别理
+  if (!hasFileDrag(e)) {
+    return
+  }
+  e.preventDefault()
+  dragDepth += 1
+  listDrag.value = true
+}
+
+/** 拖在列表上方移动时必须 preventDefault，否则 drop 不会触发 */
+function onListDragOver(e) {
+  // 不是文件拖拽就别理
+  if (!hasFileDrag(e)) {
+    return
+  }
+  e.preventDefault()
+  // 提示系统这是复制/加入，不是移动走
+  if (e.dataTransfer) {
+    e.dataTransfer.dropEffect = 'copy'
+  }
+}
+
+/** 拖出列表区（含子元素进出） */
+function onListDragLeave(e) {
+  // 当前没在高亮就不用减
+  if (!listDrag.value) {
+    return
+  }
+  e.preventDefault()
+  dragDepth = Math.max(0, dragDepth - 1)
+  // 真正离开整块区域才关高亮
+  if (dragDepth === 0) {
+    listDrag.value = false
+  }
+}
+
+/** 在文件列表松开：登记路径并弹出上传框 */
+async function onListDrop(e) {
+  e.preventDefault()
+  dragDepth = 0
+  listDrag.value = false
+
+  // 没选存储或正在上传中途，不打断
+  if (!current.value || working.value) {
+    return
+  }
+
+  // 预览页没有拖拽登记接口
+  if (!window.ossApi || !window.ossApi.addFiles || !window.ossApi.getPathForFile) {
+    findError.value = '请在应用窗口里上传'
+    return
+  }
+
+  /** 系统拖进来的 FileList */
+  const fileList = e.dataTransfer && e.dataTransfer.files
+  // 空放下就结束
+  if (!fileList || !fileList.length) {
+    return
+  }
+
+  /** 本机绝对路径，主进程才能读盘上传 */
+  const paths = []
+  for (let i = 0; i < fileList.length; i++) {
+    /** Electron 给的真实路径 */
+    const localPath = window.ossApi.getPathForFile(fileList[i])
+    // 拿不到路径的（网页拖图等）跳过
+    if (localPath) {
+      paths.push(localPath)
+    }
+  }
+
+  // 全是无效项
+  if (!paths.length) {
+    findError.value = '无法读取拖入文件的路径'
+    return
+  }
+
+  // 弹窗已传完或没开：清空后重开；开着且未传完则往现有列表追加
+  if (!upShow.value || upDone.value) {
+    upFiles.value = []
+    upError.value = ''
+    upDone.value = false
+    upShow.value = true
+  }
+
+  try {
+    /** 主进程登记后的 id / 名称 / 大小 */
+    const res = await window.ossApi.addFiles(paths)
+    // 一个有效文件都没有（例如空文件夹）
+    if (!res || !res.ok) {
+      upError.value = (res && res.error) || '拖入失败'
+      return
+    }
+    if (!(res.files || []).length) {
+      upError.value = '没有可上传的文件'
+      return
+    }
+    await mergeUpFiles(res.files)
+  } catch (err) {
+    upError.value = err && err.message ? err.message : '拖入文件失败'
+  }
+}
+
 /** 把主进程推来的百分比写到对应那一行 */
 function applyProgress(data) {
   /** 弹窗里的那一条 */
@@ -1190,27 +1413,46 @@ async function addUploads() {
       return
     }
 
-    for (const file of res.files || []) {
-      /** 同名的旧条目，OSS 上也会被后一个盖掉 */
-      const old = upFiles.value.find((item) => item.name === file.name)
-
-      // 同名只留最新一次选择
-      if (old && window.ossApi.forget) {
-        await window.ossApi.forget([old.id])
-        upFiles.value = upFiles.value.filter((item) => item.id !== old.id)
-      }
-
-      upFiles.value = upFiles.value.concat({
-        id: file.id,
-        name: file.name,
-        size: file.size,
-        percent: 0,
-        error: ''
-      })
+    // 超限等错误
+    if (!res.ok) {
+      upError.value = res.error || '选择文件失败'
+      return
     }
+
+    await mergeUpFiles(res.files || [])
   } catch (err) {
     upError.value = err && err.message ? err.message : '选择文件失败'
+  }
+}
+
+/** 系统文件夹框，展开后加进弹窗列表 */
+async function addFolders() {
+  // 正在传或已经传完就别再加
+  if (working.value || upDone.value || !window.ossApi || !window.ossApi.pickFolder) {
+    return
+  }
+
+  upError.value = ''
+
+  try {
+    /** 展开后的文件列表 */
+    const res = await window.ossApi.pickFolder()
+
+    // 用户取消
+    if (!res || res.canceled) {
+      return
     }
+
+    // 空目录或超限
+    if (!res.ok) {
+      upError.value = res.error || '选择文件夹失败'
+      return
+    }
+
+    await mergeUpFiles(res.files || [])
+  } catch (err) {
+    upError.value = err && err.message ? err.message : '选择文件夹失败'
+  }
 }
 
 /** 从列表拿掉一条，并让主进程忘掉路径 */
@@ -1502,7 +1744,8 @@ function fileUrl(config, key, kind) {
     /** 默认目录前缀，如 'apk/' */
     const prefix = String((config && config.prefix) || '').trim().replace(/^\/+/, '')
 
-    return `https://${host}/${prefix}download.html?apk=${path}`
+    // v= 用来冲掉微信对旧 download.html 的缓存（曾默认显示「示例应用」）
+    return `https://${host}/${prefix}download.html?v=3&apk=${path}`
   }
 
   // 自定义域名走绑定的主机
@@ -1543,7 +1786,21 @@ const codeUrl = computed(() => {
     return ''
   }
 
-  return fileUrl(current.value, codeItem.value.key, codeKind.value)
+  /** 基础公开地址 */
+  let url = fileUrl(current.value, codeItem.value.key, codeKind.value)
+
+  // 智能分流页顶部图标要和二维码中间同一张 Logo
+  if (url && codeKind.value === 'smart' && codeLogo.value) {
+    /** 当前选中的 Logo */
+    const logo = codeLogos.value.find((item) => item.name === codeLogo.value)
+
+    // 有桶内路径才拼进下载页，扫码打开就能显示
+    if (logo && logo.key) {
+      url += `&logo=${encodeURIComponent(logo.key)}`
+    }
+  }
+
+  return url
 })
 
 /** 拼不出地址时的原因 */
@@ -2061,6 +2318,7 @@ function goPlace(key) {
 
 /** 右键圆点：在指针处弹出删除 */
 function openMenu(event, id) {
+  hitMenuShow.value = false
   menuId.value = id
   menuX.value = event.clientX
   menuY.value = event.clientY
@@ -2071,13 +2329,81 @@ function openMenu(event, id) {
   })
 }
 
-/** 点了菜单里的删除 */
+/** 点了左侧存储的右键菜单 */
 function onMenu(key) {
   menuShow.value = false
 
   // 目前只有删除一项
   if (key === 'drop') {
     dropStore(menuId.value)
+  }
+}
+
+/** 打开文件列表右键菜单 */
+function openHitMenu(event, item) {
+  // 空项不弹
+  if (!item || !item.key) {
+    return
+  }
+
+  // 关掉左侧存储菜单，避免两个叠在一起
+  menuShow.value = false
+  hitMenuItem.value = item
+  hitMenuX.value = event.clientX
+  hitMenuY.value = event.clientY
+  // 先关掉再开，否则第二次右键位置不更新
+  hitMenuShow.value = false
+  nextTick(() => {
+    hitMenuShow.value = true
+  })
+
+  // 点在未选中项上：改成只选这一项（和资源管理器一样）
+  if (!picked.value.includes(item.key)) {
+    picked.value = [item.key]
+  }
+}
+
+/** 文件列表右键菜单选中某一项 */
+function onHitMenu(key) {
+  hitMenuShow.value = false
+  /** 右键当时那一项 */
+  const item = hitMenuItem.value
+  // 项已经没了就结束
+  if (!item) {
+    return
+  }
+
+  // 打开文件夹
+  if (key === 'open') {
+    onHit(item)
+    return
+  }
+
+  // 编辑 config.json
+  if (key === 'config') {
+    openConfigModal(item)
+    return
+  }
+
+  // 改名
+  if (key === 'rename') {
+    askRenameOne(item)
+    return
+  }
+
+  // 二维码
+  if (key === 'code') {
+    askCode(item)
+    return
+  }
+
+  // 删除：若右键落在多选之一上，删整批选中
+  if (key === 'remove') {
+    if (picked.value.includes(item.key) && pickedItems.value.length > 1) {
+      askRemove()
+      return
+    }
+    askRemoveOne(item)
   }
 }
 
@@ -3010,6 +3336,29 @@ onUnmounted(() => {
   min-height: 0;
   margin-top: 8px;
   overflow: auto;
+  position: relative;
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* 拖文件到列表时的高亮提示 */
+.hits.is-drag {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.hits-drag {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--panel, #fff) 72%, transparent);
 }
 
 .hit {
@@ -3295,17 +3644,6 @@ onUnmounted(() => {
   margin: 4px 0 0;
   color: var(--danger);
   font-size: 12px;
-}
-
-.code-url {
-  margin: 12px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--input);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1.5;
-  word-break: break-all;
 }
 
 .code-img {

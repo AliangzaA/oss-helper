@@ -1,5 +1,5 @@
 // 预加载：只把配置读写暴露给页面，页面碰不到 Node
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('configApi', {
   /** 读当前目录里的配置，以及两个文件路径 */
@@ -23,6 +23,19 @@ contextBridge.exposeInMainWorld('ossApi', {
   ensure: (data) => ipcRenderer.invoke('oss:ensure', data),
   /** 弹出系统文件框，只把名字和大小交回页面 */
   pick: () => ipcRenderer.invoke('oss:pick'),
+  /** 弹出系统文件夹框，展开里面的文件再交回页面 */
+  pickFolder: () => ipcRenderer.invoke('oss:pickFolder'),
+  /** 拖拽文件/文件夹直接把本地路径加入待传 */
+  addFiles: (paths) => ipcRenderer.invoke('oss:addFiles', paths),
+  /** 获取拖拽 File 对象的本地文件路径 */
+  getPathForFile: (file) => {
+    try {
+      if (webUtils && typeof webUtils.getPathForFile === 'function') {
+        return webUtils.getPathForFile(file)
+      }
+    } catch {}
+    return (file && file.path) || ''
+  },
   /** 弹窗关掉或移除某一条时，丢掉主进程里记下的路径 */
   forget: (ids) => ipcRenderer.invoke('oss:forget', ids),
   /** 按挑选时的 id 上传到当前目录 */

@@ -442,6 +442,13 @@ async function removePrefix(client, prefix) {
  * @param {string[]} paths 本地路径
  * @param {(index: number, percent: number) => void} [onProgress]
  */
+/**
+ * 上传本地文件到当前目录；支持相对路径（文件夹上传）
+ * @param {object} config
+ * @param {string} place
+ * @param {Array<string|{ path: string, rel: string }>} paths
+ * @param {(index: number, percent: number) => void} [onProgress]
+ */
 async function upload(config, place, paths, onProgress) {
   /** 大文件放宽超时 */
   const client = openClient(config, 10 * 60 * 1000)
@@ -449,26 +456,32 @@ async function upload(config, place, paths, onProgress) {
   const head = dirPrefix(config, place)
   /** 成功个数 */
   let uploaded = 0
-  /** 页面这次要传的路径 */
+  /** 页面这次要传的条目 */
   const list = paths || []
 
   for (let index = 0; index < list.length; index += 1) {
-    /** 这一条本地路径 */
-    const filePath = list[index]
+    /** 这一条：兼容旧版纯字符串路径 */
+    const raw = list[index]
+    /** 本地绝对路径 */
+    const filePath = typeof raw === 'string' ? raw : raw && raw.path
+    /** OSS 对象相对键，文件夹上传会带层级 */
+    const rel = typeof raw === 'string'
+      ? path.basename(raw)
+      : String((raw && raw.rel) || path.basename(filePath || '')).replace(/\\/g, '/')
 
     // 对话框有时会给空项
-    if (!filePath) {
+    if (!filePath || !rel) {
       continue
     }
 
-    /** 只取文件名，不带本地目录 */
-    const name = path.basename(filePath)
-    /** 名称不合法就停，避免把路径拼进对象键 */
-    const error = checkName(name)
-
-    // 本地文件名本身就不该进 OSS
-    if (error) {
-      throw new Error(error)
+    // 相对路径每一层都要合法，避免 ../ 之类
+    for (const part of rel.split('/')) {
+      /** 这一层名字的问题 */
+      const error = checkName(part)
+      // 本地文件名本身就不该进 OSS
+      if (error) {
+        throw new Error(`${rel}：${error}`)
+      }
     }
 
     // 开始传之前先把进度归零，进度条才有起点
@@ -478,7 +491,7 @@ async function upload(config, place, paths, onProgress) {
 
     try {
       // 分片上传才会持续回调进度，小文件也会很快走到 100
-      await client.multipartUpload(`${head}${name}`, filePath, {
+      await client.multipartUpload(`${head}${rel}`, filePath, {
         progress: (ratio) => {
           // 还没人听进度就别算百分比
           if (!onProgress) {
@@ -491,9 +504,9 @@ async function upload(config, place, paths, onProgress) {
         }
       })
     } catch (err) {
-      /** 带上文件名，弹窗才知道是哪一条失败 */
+      /** 带上相对路径，弹窗才知道是哪一条失败 */
       const message = err && err.message ? err.message : '上传失败'
-      throw new Error(`${name}：${message}`)
+      throw new Error(`${rel}：${message}`)
     }
 
     // 有的小文件回调停在 99，传完强制记成完成
@@ -818,7 +831,10 @@ async function listLogos(config) {
         }
 
         files.push({
+          /** 文件名，弹窗里展示用 */
           name,
+          /** 桶内完整路径，拼进 download.html?logo= 与二维码中间同一张 */
+          key: obj.name,
           src: `data:${mime};base64,${Buffer.from(buf).toString('base64')}`
         })
       } catch {

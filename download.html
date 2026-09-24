@@ -2,10 +2,27 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>应用下载中心</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <!-- 微信内置浏览器爱缓存旧页，避免一直显示「示例应用」 -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>应用官方下载</title>
   <style>
-    /* 全局基础重置与排版 */
+    /* 全局重置与基础变量 */
+    :root {
+      --primary-color: #0071e3;
+      --primary-gradient: linear-gradient(135deg, #0077ed 0%, #0056b3 100%);
+      --bg-gradient: radial-gradient(circle at 50% -20%, #eef4ff 0%, #f5f7fb 60%, #e9eef6 100%);
+      --card-bg: rgba(255, 255, 255, 0.88);
+      --card-border: rgba(255, 255, 255, 0.9);
+      --card-shadow: 0 20px 50px -12px rgba(0, 20, 60, 0.12), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+      --text-main: #1d1d1f;
+      --text-sub: #6e6e73;
+      --radius-app: 22px;
+      --radius-btn: 16px;
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -14,43 +31,82 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: linear-gradient(145deg, #0d1117 0%, #161b22 100%);
-      color: #f0f6fc;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg-gradient);
+      color: var(--text-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px 16px;
+      padding: 32px 20px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* 顶部环境光晕点缀 */
+    .ambient-glow {
+      position: absolute;
+      top: -100px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(circle, rgba(0, 113, 227, 0.18) 0%, rgba(0, 113, 227, 0) 70%);
+      pointer-events: none;
+      z-index: 0;
     }
 
     /* 主卡片容器 */
     .app-card {
       width: 100%;
-      max-width: 420px;
-      background: rgba(22, 27, 34, 0.85);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 24px;
-      padding: 32px 24px;
+      max-width: 400px;
+      background: var(--card-bg);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      border: 1px solid var(--card-border);
+      border-radius: 32px;
+      padding: 38px 28px 32px;
       text-align: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      box-shadow: var(--card-shadow);
+      position: relative;
+      z-index: 1;
+      animation: cardAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
     }
 
-    /* 应用图标样式 */
+    @keyframes cardAppear {
+      from {
+        opacity: 0;
+        transform: translateY(24px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* App 图标外框 */
+    .app-logo-wrap {
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 20px;
+      position: relative;
+    }
+
     .app-logo {
-      width: 88px;
-      height: 88px;
-      border-radius: 20px;
-      margin: 0 auto 16px;
+      width: 100%;
+      height: 100%;
+      border-radius: var(--radius-app);
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #1f6feb 0%, #388bfd 100%);
-      box-shadow: 0 10px 24px rgba(31, 111, 235, 0.35);
-      font-size: 36px;
+      background: linear-gradient(135deg, #0071e3 0%, #0051c7 100%);
+      box-shadow: 0 12px 28px rgba(0, 113, 227, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.04);
       overflow: hidden;
+      color: #ffffff;
+      font-weight: 700;
+      user-select: none;
+      transition: all 0.3s ease;
     }
 
     .app-logo img {
@@ -58,36 +114,88 @@
       height: 100%;
       object-fit: cover;
       display: block;
+      animation: logoFadeIn 0.35s ease-out;
     }
 
-    /* 应用标题 */
-    .app-name {
-      font-size: 22px;
+    @keyframes logoFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .app-logo-text {
+      font-size: 40px;
       font-weight: 700;
       color: #ffffff;
+      letter-spacing: -1px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    /* 应用标题与官方标签 */
+    .app-title-area {
+      margin-bottom: 20px;
+    }
+
+    .app-name {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-main);
+      letter-spacing: -0.4px;
+      line-height: 1.25;
       margin-bottom: 6px;
     }
 
-    /* 状态与检测提示标签 */
-    .status-badge {
+    .app-subtitle {
+      font-size: 14px;
+      color: var(--text-sub);
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      padding: 6px 14px;
-      background: rgba(56, 139, 253, 0.12);
-      border: 1px solid rgba(56, 139, 253, 0.25);
-      border-radius: 20px;
-      font-size: 13px;
-      color: #58a6ff;
-      margin-bottom: 24px;
     }
 
-    /* 加载旋转指示器 */
-    .spinner {
+    /* 安全官方认证徽标 */
+    .security-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(52, 199, 89, 0.12);
+      color: #248a3d;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .security-badge svg {
       width: 12px;
       height: 12px;
-      border: 2px solid rgba(88, 166, 255, 0.3);
-      border-top-color: #58a6ff;
+      fill: currentColor;
+    }
+
+    /* 设备探测与状态指示器 */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 16px;
+      background: rgba(0, 0, 0, 0.04);
+      border-radius: 30px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-sub);
+      margin-bottom: 26px;
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.highlight {
+      background: rgba(0, 113, 227, 0.08);
+      color: var(--primary-color);
+    }
+
+    .spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(0, 113, 227, 0.2);
+      border-top-color: var(--primary-color);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
@@ -103,204 +211,467 @@
       gap: 12px;
     }
 
-    /* 下载按钮统一风格 */
+    /* 通用下载按钮基础样式 */
     .btn-download {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
+      justify-content: flex-start;
+      gap: 14px;
       width: 100%;
-      padding: 14px 18px;
-      border-radius: 14px;
-      font-size: 15px;
-      font-weight: 600;
+      padding: 14px 20px;
+      border-radius: var(--radius-btn);
       text-decoration: none;
-      transition: all 0.2s ease;
+      transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
       cursor: pointer;
       border: 1px solid transparent;
+      position: relative;
+      text-align: left;
     }
 
-    /* iOS 苹果按钮 */
+    .btn-download:active {
+      transform: scale(0.98);
+    }
+
+    .btn-icon {
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .btn-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .btn-text {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+
+    .btn-subtitle {
+      font-size: 11px;
+      font-weight: 400;
+      opacity: 0.8;
+      letter-spacing: 0.2px;
+      line-height: 1.1;
+      margin-bottom: 2px;
+    }
+
+    .btn-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      line-height: 1.2;
+    }
+
+    .btn-tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 12px;
+      white-space: nowrap;
+    }
+
+    /* 苹果 App Store 按钮 */
     .btn-apple {
-      background: #ffffff;
-      color: #000000;
-    }
-    .btn-apple:hover {
-      background: #e6e6e6;
+      background: #000000;
+      color: #ffffff;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
     }
 
-    /* 谷歌 Play 商店按钮 */
+    .btn-apple .btn-icon svg {
+      fill: #ffffff;
+    }
+
+    .btn-apple .btn-tag {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+    }
+
+    /* 谷歌 Google Play 按钮 */
     .btn-google {
-      background: rgba(255, 255, 255, 0.08);
-      color: #ffffff;
-      border-color: rgba(255, 255, 255, 0.15);
-    }
-    .btn-google:hover {
-      background: rgba(255, 255, 255, 0.15);
+      background: #ffffff;
+      color: #1d1d1f;
+      border: 1px solid #e5e5ea;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
     }
 
-    /* 国内 APK 直接下载按钮 */
-    .btn-android {
-      background: linear-gradient(135deg, #238636 0%, #2ea043 100%);
-      color: #ffffff;
-      box-shadow: 0 4px 14px rgba(46, 160, 67, 0.3);
-    }
-    .btn-android:hover {
-      background: linear-gradient(135deg, #2ea043 0%, #3fb950 100%);
+    .btn-google .btn-subtitle {
+      color: #6e6e73;
     }
 
-    /* 微信内打开的遮罩指引 */
+    .btn-google .btn-tag {
+      background: #f5f5f7;
+      color: #6e6e73;
+    }
+
+    /* 国内官方 APK 直接下载按钮 */
+    .btn-apk {
+      background: var(--primary-gradient);
+      color: #ffffff;
+      box-shadow: 0 8px 24px rgba(0, 113, 227, 0.28);
+    }
+
+    .btn-apk .btn-icon svg {
+      fill: #ffffff;
+    }
+
+    .btn-apk .btn-tag {
+      background: rgba(255, 255, 255, 0.22);
+      color: #ffffff;
+    }
+
+    /* 次要按钮弱化显示 */
+    .btn-download.is-secondary {
+      background: #ffffff;
+      border: 1px solid #e8e8ed;
+      color: #3a3a3c;
+      box-shadow: none;
+    }
+
+    .btn-download.is-secondary .btn-subtitle {
+      color: #8e8e93;
+    }
+
+    .btn-download.is-secondary .btn-apple-icon svg {
+      fill: #1d1d1f;
+    }
+
+    .btn-download.is-secondary .btn-apk-icon svg {
+      fill: #0071e3;
+    }
+
+    .btn-download.is-secondary .btn-tag {
+      background: #f2f2f7;
+      color: #8e8e93;
+    }
+
+    /* 底部安全与版权提示 */
+    .footer-tip {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #a1a1a6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    /* 微信/QQ 内打开指引蒙层 */
     .wechat-mask {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.88);
-      z-index: 9999;
-      padding: 24px;
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      z-index: 99999;
+      padding: 30px 24px;
+    }
+
+    .wechat-mask-inner {
+      max-width: 360px;
+      margin: 0 auto;
       text-align: right;
     }
 
-    .wechat-arrow {
-      font-size: 42px;
+    .wechat-arrow-svg {
+      width: 72px;
+      height: 72px;
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
       margin-bottom: 12px;
-      display: inline-block;
+      animation: bounceArrow 1.2s ease-in-out infinite alternate;
     }
 
-    .wechat-tip {
-      font-size: 16px;
-      line-height: 1.6;
-      color: #ffffff;
-      text-align: right;
+    @keyframes bounceArrow {
+      from { transform: translateY(0) rotate(10deg); }
+      to { transform: translateY(-12px) rotate(10deg); }
     }
 
-    /* 方案解释说明区域 */
-    .explanation-panel {
-      margin-top: 24px;
-      padding: 16px;
-      border-radius: 12px;
-      background: rgba(0, 0, 0, 0.25);
-      border: 1px dashed rgba(255, 255, 255, 0.15);
+    .wechat-guide-card {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      padding: 20px;
       text-align: left;
-      font-size: 12px;
-      line-height: 1.6;
-      color: #8b949e;
+      color: #ffffff;
     }
 
-    .explanation-panel h4 {
-      color: #c9d1d9;
-      font-size: 13px;
-      margin-bottom: 6px;
+    .wechat-guide-card h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .wechat-guide-card p {
+      font-size: 14px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.85);
     }
   </style>
 </head>
 <body>
 
+  <!-- 背景灵动光晕 -->
+  <div class="ambient-glow"></div>
+
   <!-- 主卡片 -->
   <div class="app-card">
-    <div class="app-logo" id="appLogo">🚀</div>
-    <h1 class="app-name">示例应用</h1>
+    <!-- 图标容器 -->
+    <div class="app-logo-wrap">
+      <div class="app-logo" id="appLogo">
+        <span class="app-logo-text" id="appLogoText">应</span>
+      </div>
+    </div>
+
+    <!-- 标题与状态 -->
+    <div class="app-title-area">
+      <h1 class="app-name" id="appName">应用下载</h1>
+      <div class="app-subtitle">
+        <span>官方正版发布</span>
+        <span class="security-badge">
+          <svg viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/></svg>
+          安全认证
+        </span>
+      </div>
+    </div>
 
     <!-- 动态探测状态条 -->
     <div class="status-badge" id="statusBadge">
       <div class="spinner" id="statusSpinner"></div>
-      <span id="statusText">正在识别您的设备环境与地域...</span>
+      <span id="statusText">正在匹配最佳下载源...</span>
     </div>
 
-    <!-- 下载跳转选项（既支持自动直跳，也支持手动备选） -->
-    <div class="download-actions">
+    <!-- 下载跳转选项 -->
+    <div class="download-actions" id="downloadActions">
       <!-- 苹果 App Store -->
-      <a id="btnApple" class="btn-download btn-apple" href="https://apps.apple.com/cn/app/id000000000" target="_blank">
-        <span></span> 前往 App Store 下载
+      <a id="btnApple" class="btn-download btn-apple" href="javascript:void(0);" target="_blank">
+        <div class="btn-icon btn-apple-icon">
+          <!-- Apple 矢量 SVG -->
+          <svg viewBox="0 0 170 170"><path d="M150.37 130.25c-2.45 5.66-5.35 10.87-8.71 15.66-4.58 6.53-8.33 11.05-11.22 13.56-4.48 4.12-9.28 6.23-14.42 6.35-3.69 0-8.14-1.05-13.32-3.18-5.19-2.12-9.97-3.17-14.34-3.17-4.58 0-9.49 1.05-14.75 3.17-5.26 2.13-9.5 3.24-12.74 3.35-4.35.13-9.16-1.9-14.42-6.08-3.7-3.04-7.7-7.85-12-14.43-6-9.14-10.7-19.46-14.1-30.98-3.4-11.51-5.1-22.37-5.1-32.57 0-14.34 3.52-25.75 10.57-34.22 7.05-8.47 15.82-12.8 26.32-13 4.8 0 10.02 1.34 15.68 4.02 5.66 2.68 9.38 4.08 11.16 4.2 1.9-.24 5.79-1.68 11.66-4.33 5.88-2.65 11.11-3.88 15.7-3.69 11.8.61 21.03 4.89 27.69 12.83-10.22 6.22-15.22 14.74-15 25.56.24 8.5 3.4 15.61 9.49 21.32 6.08 5.71 13.44 9.07 22.08 10.08-2.12 6.35-4.71 12.8-7.76 19.34zM119.22 31.84c0-6.72 2.45-13.11 7.35-18.17 4.9-5.06 10.96-8.23 18.18-9.51.58 3.54.43 7.37-.45 11.5-.88 4.13-2.68 8.01-5.4 11.64-3.03 4.02-6.73 7.07-11.1 9.15-4.37 2.08-8.91 3.1-13.62 3.06.33-2.55.51-5.04.51-7.48z"/></svg>
+        </div>
+        <div class="btn-text">
+          <span class="btn-subtitle">Download on the</span>
+          <span class="btn-title">App Store</span>
+        </div>
+        <span class="btn-tag" id="tagApple">iOS</span>
       </a>
 
       <!-- 谷歌商店 Google Play -->
-      <a id="btnGoogle" class="btn-download btn-google" href="https://play.google.com/store/apps/details?id=com.example.app" target="_blank">
-        <span>▶</span> 在 Google Play 获取
+      <a id="btnGoogle" class="btn-download btn-google" href="javascript:void(0);" target="_blank">
+        <div class="btn-icon">
+          <!-- Google Play 矢量 SVG -->
+          <svg viewBox="0 0 512 512">
+            <path fill="#4285F4" d="M47.7 27.4L266 245.7 47.7 464c-6.8-6.8-10.7-16.3-10.7-26.3V53.7c0-10 3.9-19.5 10.7-26.3z"/>
+            <path fill="#FBBC04" d="M374.8 136.9L266 245.7l108.8 108.8 62.6-35.9c16.3-9.3 26.6-26.7 26.6-45.6s-10.3-36.3-26.6-45.6l-62.6-34.5z"/>
+            <path fill="#EA4335" d="M47.7 27.4l327.1 109.5L266 245.7 47.7 27.4z"/>
+            <path fill="#34A853" d="M47.7 464L266 245.7l108.8 108.8L47.7 464z"/>
+          </svg>
+        </div>
+        <div class="btn-text">
+          <span class="btn-subtitle">GET IT ON</span>
+          <span class="btn-title">Google Play</span>
+        </div>
+        <span class="btn-tag" id="tagGoogle">海外安卓</span>
       </a>
 
-      <!-- 国内安卓直接下载 APK (替换为 OSS 直链) -->
-      <a id="btnAndroid" class="btn-download btn-android" href="https://your-bucket.oss-cn-hangzhou.aliyuncs.com/app-release.apk">
-        <span>⬇</span> 国内安卓直接下载 (.apk)
+      <!-- 国内安卓直接下载 APK -->
+      <a id="btnAndroid" class="btn-download btn-apk" href="javascript:void(0);">
+        <div class="btn-icon btn-apk-icon">
+          <!-- 安卓/下载 矢量 SVG -->
+          <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+        </div>
+        <div class="btn-text">
+          <span class="btn-subtitle">官方高速直链</span>
+          <span class="btn-title">直接下载安装包 (.apk)</span>
+        </div>
+        <span class="btn-tag" id="tagAndroid">国内安卓</span>
       </a>
     </div>
 
-    <!-- 给圣上展示原理的说明 -->
-    <div class="explanation-panel">
-      <h4>💡 为什么这个 HTML 能实现圣上的需求？</h4>
-      <p>1. <strong>二维码存什么</strong>：二维码里只存这个网页在 OSS 上的网址（如 <code>https://your-domain.com/download.html</code>）。</p>
-      <p>2. <strong>页面打开瞬间自动执行 JS</strong>：无需额外搭建后端服务器，前端直接读取浏览器 User-Agent 和时区地域，毫秒级分流跳转！</p>
-      <p>3. <strong>双重保障</strong>：自动跳转失败或用户想自己选择时，下方三个按钮随时可点。</p>
+    <!-- 底部版权/备案与安全说明 -->
+    <div class="footer-tip">
+      <span>已通过安全与病毒扫描 · 放心下载</span>
     </div>
   </div>
 
   <!-- 微信内扫码提示蒙层 -->
   <div class="wechat-mask" id="wechatMask">
-    <div class="wechat-arrow">↗</div>
-    <div class="wechat-tip">
-      点击右上角 <strong>•••</strong><br>
-      选择 <strong>“在浏览器打开”</strong><br>
-      即可自动开始下载
+    <div class="wechat-mask-inner">
+      <svg class="wechat-arrow-svg" viewBox="0 0 24 24">
+        <path d="M7 17L17 7M17 7H7M17 7V17"/>
+      </svg>
+      <div class="wechat-guide-card">
+        <h3>微信内暂不支持直接下载</h3>
+        <p>请点击右上角 <strong>•••</strong> 菜单<br>选择 <strong>“在浏览器打开”</strong> 即可自动开始下载安装。</p>
+      </div>
     </div>
   </div>
 
   <script>
-    /** 苹果 App Store 目标链接（可被递归查到的 config.json 动态覆盖） */
-    let appleStoreUrl = 'https://apps.apple.com/cn/app/id000000000';
+    /** 苹果 App Store 目标链接 */
+    let appleStoreUrl = '';
 
-    /** 谷歌商店 Google Play 目标链接（可被递归查到的 config.json 动态覆盖） */
-    let googlePlayUrl = 'https://play.google.com/store/apps/details?id=com.example.app';
+    /** 谷歌商店 Google Play 目标链接 */
+    let googlePlayUrl = '';
 
-    /** 国内安卓 APK 文件的下载直链（优先从 ?apk= 参数获取，否则使用默认占位） */
-    let domesticApkUrl = 'https://your-bucket.oss-cn-hangzhou.aliyuncs.com/app-release.apk';
+    /** 国内安卓 APK 文件的下载直链 */
+    let domesticApkUrl = '';
 
     /** 页面 URL 参数解析器 */
     const urlParams = new URLSearchParams(window.location.search);
     /** URL 中传入的 apk 文件路径（例如 apk/大湃/安卓/1.1.10.apk） */
     const apkParam = urlParams.get('apk') || '';
+    /** URL 中传入的 logo 文件路径或名称（与二维码中间 Logo 一致） */
+    const logoParam = urlParams.get('logo') || '';
 
-    // 如果 URL 传了具体的 apk 文件路径，立即组装出国内下载直链
+    /** 基础域名 */
+    const origin = window.location.origin.startsWith('http') ? window.location.origin : 'https://dl.yepaiapp.com';
+
+    // 初始化 APK 下载直链
     if (apkParam) {
       if (apkParam.startsWith('http://') || apkParam.startsWith('https://')) {
         domesticApkUrl = apkParam;
       } else {
-        // 拼装绝对地址（若本地预览，采用自定义域名 dl.yepaiapp.com 作为基础域）
-        const origin = window.location.origin.startsWith('http') ? window.location.origin : 'https://dl.yepaiapp.com';
         domesticApkUrl = `${origin}/${apkParam.replace(/^\/+/, '')}`;
       }
-      // 更新页面上“国内安卓直接下载”按钮的链接
       const btnAndroid = document.getElementById('btnAndroid');
       if (btnAndroid) {
         btnAndroid.href = domesticApkUrl;
       }
     }
 
+    /** 从 apk 路径智能推断应用名称（例如 apk/大湃/安卓/1.1.10.apk -> 大湃） */
+    function guessAppName(filePath) {
+      if (!filePath) return '应用下载';
+      const clean = filePath.replace(/^https?:\/\/[^\/]+/, '').replace(/^\/+/, '');
+      const parts = clean.split('/');
+      for (const p of parts) {
+        if (p && !['apk', 'android', '安卓', 'ios', 'bin', 'release'].includes(p.toLowerCase()) && !p.toLowerCase().endsWith('.apk')) {
+          try {
+            return decodeURIComponent(p);
+          } catch {
+            return p;
+          }
+        }
+      }
+      return '应用下载';
+    }
+
+    // 优先设置推测的应用名称与首字，避免空白或显示生硬
+    const guessedName = guessAppName(apkParam);
+    const appNameEl = document.getElementById('appName');
+    const appLogoText = document.getElementById('appLogoText');
+    const appLogoEl = document.getElementById('appLogo');
+    if (appNameEl && guessedName !== '应用下载') {
+      appNameEl.innerText = guessedName;
+      document.title = `${guessedName} - 官方下载`;
+    }
+    if (appLogoText && guessedName && guessedName !== '应用下载') {
+      appLogoText.innerText = guessedName.charAt(0);
+    }
+
+    /** URL 已指定 Logo 时锁定，避免后面 config.json 再盖成别的图 */
+    let logoLocked = false;
+
     /**
-     * 根据 apk 文件路径递归向上层目录逐级查找 config.json
-     * 例如 apkParam = "apk/大湃/安卓/1.1.10.apk"
-     * 依次检索：
-     * 1. apk/大湃/安卓/config.json
-     * 2. apk/大湃/config.json
-     * 3. apk/config.json
-     * 4. /config.json
-     * @param {string} filePath - 文件相对或绝对路径
-     * @returns {Promise<Object|null>} 找到的配置对象或 null
+     * 智能多源探测加载 Logo，一旦加载成功立即渲染
+     * @param {string[]} candidateUrls
+     * @param {boolean} [lockAfterLoad] - 来自二维码同款 logo 参数时加载成功即锁定
      */
-    async function findConfigRecursively(filePath) {
-      if (!filePath) {
-        return null;
+    function tryLoadLogo(candidateUrls, lockAfterLoad) {
+      const urls = candidateUrls.filter(Boolean);
+      let index = 0;
+
+      function checkNext() {
+        // 已被锁定就别再换
+        if (logoLocked) return;
+        if (index >= urls.length) return;
+        const currentUrl = urls[index++];
+        const img = new Image();
+        img.onload = () => {
+          // 异步回来时可能已被更高优先级 Logo 锁定
+          if (logoLocked) return;
+          if (appLogoEl) {
+            appLogoEl.innerHTML = `<img src="${currentUrl}" alt="App Logo">`;
+          }
+          // 二维码选中的那张，后面不要再被 config 覆盖
+          if (lockAfterLoad) {
+            logoLocked = true;
+          }
+        };
+        img.onerror = () => {
+          checkNext();
+        };
+        img.src = currentUrl;
       }
 
-      /** 清理协议与域名，提取纯对象路径 */
-      const cleanPath = filePath.replace(/^https?:\/\/[^\/]+/, '').replace(/^\/+/, '');
-      /** 路径段切分 */
-      const parts = cleanPath.split('/');
-      // 弹出文件名，只保留目录部分
-      parts.pop();
+      checkNext();
+    }
 
-      /** 基础站点域名 */
+    // 提前构建 Logo 候选列表并尝试加载
+    const cleanApkPath = apkParam.replace(/^https?:\/\/[^\/]+/, '').replace(/^\/+/, '');
+    const apkDirParts = cleanApkPath.split('/');
+    apkDirParts.pop();
+    const apkDir = apkDirParts.join('/');
+
+    /** 与二维码中间同一张：优先用 URL 里的 logo 参数 */
+    const paramLogoCandidates = [];
+    if (logoParam) {
+      // 完整 http(s) 地址直接用
+      if (logoParam.startsWith('http://') || logoParam.startsWith('https://')) {
+        paramLogoCandidates.push(logoParam);
+      } else {
+        const cleanLogo = logoParam.replace(/^\/+/, '');
+        // 桶内完整路径（生成二维码时写入）
+        paramLogoCandidates.push(`${origin}/${cleanLogo}`);
+        paramLogoCandidates.push(`${origin}/logo/${cleanLogo}`);
+        // 只传了文件名时，按常见 Logo 目录再试
+        if (apkDir) {
+          paramLogoCandidates.push(`${origin}/${apkDir}/${cleanLogo}`);
+          paramLogoCandidates.push(`${origin}/apk/logo/${cleanLogo}`);
+        }
+      }
+      tryLoadLogo(paramLogoCandidates, true);
+    }
+
+    /** 未带 logo 参数时的兜底探测 */
+    const fallbackLogoCandidates = [];
+    if (apkDir) {
+      fallbackLogoCandidates.push(`${origin}/${apkDir}/logo.png`);
+      fallbackLogoCandidates.push(`${origin}/${apkDir}/icon.png`);
+    }
+    fallbackLogoCandidates.push(`${origin}/apk/logo/logo.png`);
+    fallbackLogoCandidates.push(`${origin}/logo.png`);
+    fallbackLogoCandidates.push(`${origin}/icon.png`);
+
+    // 没带二维码 Logo 参数才走兜底，避免盖住正确图标
+    if (!logoParam) {
+      tryLoadLogo(fallbackLogoCandidates, false);
+    }
+
+    /**
+     * 递归向上层目录逐级查找 config.json 提取名称、图标与各端商店配置
+     * @param {string} filePath - 文件路径
+     * @returns {Promise<Object|null>}
+     */
+    async function findConfigRecursively(filePath) {
+      if (!filePath) return null;
+
+      const cleanPath = filePath.replace(/^https?:\/\/[^\/]+/, '').replace(/^\/+/, '');
+      const parts = cleanPath.split('/');
+      parts.pop(); // 弹出文件名
+
       const origin = window.location.origin.startsWith('http') ? window.location.origin : 'https://dl.yepaiapp.com';
 
-      // 逐层向上查找 config.json
       while (parts.length > 0) {
         const candidateUrl = `${origin}/${parts.join('/')}/config.json`;
         try {
@@ -312,13 +683,11 @@
               return data;
             }
           }
-        } catch {
-          // 当前层级没有找到，继续向上层目录检索
-        }
+        } catch {}
         parts.pop();
       }
 
-      // 最后一层尝试站点根目录
+      // 根目录查找
       try {
         const rootResp = await fetch(`${origin}/config.json`, { cache: 'no-cache' });
         if (rootResp.ok) {
@@ -333,180 +702,239 @@
       return null;
     }
 
-    /**
-     * 判断当前是否处于微信或 QQ 扫码内置浏览器中
-     * 作用：微信中会拦截 apk 下载和应用商店协议，需要弹窗提示去系统自带浏览器打开
-     * @returns {boolean} 是否为微信或 QQ 内核
-     */
+    /** 判断是否处于微信或 QQ 内部 */
     function isWechatOrQQ() {
-      /** 当前浏览器用户代理字符串 */
-      const userAgent = navigator.userAgent.toLowerCase();
-      return /micromessenger/i.test(userAgent) || /qq\//i.test(userAgent);
+      const ua = navigator.userAgent.toLowerCase();
+      return /micromessenger/i.test(ua) || /qq\//i.test(ua);
     }
 
-    /**
-     * 判断当前访问设备是否为苹果 iOS (iPhone / iPad / iPod)
-     * @returns {boolean} 是否为 iOS 设备
-     */
+    /** 判断是否为苹果 iOS 设备 */
     function isAppleDevice() {
-      /** 设备代理及多平台标识 */
       const ua = navigator.userAgent.toLowerCase();
       return /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     }
 
-    /**
-     * 判断安卓设备是否属于国内网络/环境
-     * 原理：
-     * 1. 优先读取系统时区 (中国主要时区为 Asia/Shanghai 等)
-     * 2. 配合语言偏好 (zh-CN)
-     * 3. 亦可异步请求轻量 GeoIP API
-     * @returns {boolean} 是否判断为国内用户
-     */
-    function isDomesticUser() {
+    /** 时区/语言兜底：判断像不像国内机（VPN 改不了这两项） */
+    function isDomesticByLocale() {
       try {
-        /** 客户端时区 */
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        /** 判定国内主要时区 */
-        if (timeZone === 'Asia/Shanghai' || timeZone === 'Asia/Chongqing' || timeZone === 'Asia/Harbin' || timeZone === 'Asia/Urumqi') {
+        // 中国常用时区
+        if (['Asia/Shanghai', 'Asia/Chongqing', 'Asia/Harbin', 'Asia/Urumqi'].includes(timeZone)) {
           return true;
         }
-
-        /** 语言判定兜底 */
         const primaryLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
-        if (primaryLang.includes('zh-cn')) {
+        // 简体中文系统语言
+        if (primaryLang === 'zh-cn' || primaryLang.startsWith('zh-hans')) {
           return true;
         }
-
         return false;
-      } catch (err) {
-        // 出错默认优先国内下载
+      } catch {
         return true;
       }
     }
 
     /**
-     * 核心智能分发路由执行函数
-     * 扫描进入页面后自动完成环境识别、按需递归检索配置并触发跳转
+     * 是否国内网络：优先看出网 IP（挂 VPN 会变成海外），失败再退回时区/语言
+     * @returns {Promise<boolean>}
      */
-    async function executeDispatch() {
-      /** 状态文案 DOM 元素 */
-      const statusText = document.getElementById('statusText');
-      /** 加载图标 DOM 元素 */
-      const statusSpinner = document.getElementById('statusSpinner');
-      /** 微信蒙层 DOM 元素 */
-      const wechatMask = document.getElementById('wechatMask');
-      /** 页面大标题 DOM 元素 */
-      const appNameEl = document.querySelector('.app-name');
-      /** 苹果下载按钮 DOM 元素 */
+    async function isDomesticUser() {
+      // 多个轻量接口轮询，任一成功就按国家码判断
+      const endpoints = [
+        'https://api.country.is/',
+        'https://ipapi.co/country_code/'
+      ];
+
+      for (const endpoint of endpoints) {
+        try {
+          const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          const timer = controller ? setTimeout(() => controller.abort(), 2200) : null;
+          const resp = await fetch(endpoint, {
+            cache: 'no-store',
+            signal: controller ? controller.signal : undefined
+          });
+          if (timer) clearTimeout(timer);
+          // 接口失败就试下一个
+          if (!resp.ok) continue;
+
+          // country.is 返回 JSON；ipapi 返回纯文本国家码
+          if (endpoint.includes('country.is')) {
+            const data = await resp.json();
+            if (data && data.country) {
+              return String(data.country).toUpperCase() === 'CN';
+            }
+          } else {
+            const code = (await resp.text()).trim().toUpperCase();
+            // 只要像两位国家码就信
+            if (/^[A-Z]{2}$/.test(code)) {
+              return code === 'CN';
+            }
+          }
+        } catch {
+          // 超时或被拦，换下一个
+        }
+      }
+
+      // IP 探测全失败（无网/接口挂了）才用本地环境兜底
+      return isDomesticByLocale();
+    }
+
+    /**
+     * 拉取并注入 config.json 里的名称、商店链接、Logo
+     * 微信里也要跑，否则会一直停在旧页的「示例应用」
+     * @returns {Promise<object|null>}
+     */
+    async function applyConfigMeta() {
+      // 没带 apk 参数就无从查找
+      if (!apkParam) return null;
+
+      const config = await findConfigRecursively(apkParam);
+      // 上层目录都没有 config
+      if (!config) return null;
+
+      const appNameEl = document.getElementById('appName');
+      const appLogoEl = document.getElementById('appLogo');
       const btnApple = document.getElementById('btnApple');
-      /** 谷歌商店按钮 DOM 元素 */
       const btnGoogle = document.getElementById('btnGoogle');
 
-      // 1. 如果在微信内，先展示浮层引导
+      // 有正式名称就盖掉路径推测名 / 旧默认「示例应用」
+      if (config.name && appNameEl) {
+        appNameEl.innerText = config.name;
+        document.title = `${config.name} - 官方下载`;
+      }
+
+      // 商店链接写入按钮
+      if (config.appleUrl && btnApple) {
+        appleStoreUrl = config.appleUrl;
+        btnApple.href = appleStoreUrl;
+      }
+      if (config.googleUrl && btnGoogle) {
+        googlePlayUrl = config.googleUrl;
+        btnGoogle.href = googlePlayUrl;
+      }
+
+      // URL 已带二维码同款 logo 时不要覆盖
+      if (!logoLocked && !logoParam && appLogoEl) {
+        const logoTarget = config.logo || 'logo.png';
+        const logoUrl = (logoTarget.startsWith('http://') || logoTarget.startsWith('https://'))
+          ? logoTarget
+          : `${origin}/${config._dir || ''}${logoTarget}`.replace(/([^:]\/)\/+/g, '$1');
+
+        const testImg = new Image();
+        testImg.onload = () => {
+          // 异步期间可能已被 logo 参数锁定
+          if (logoLocked) return;
+          appLogoEl.innerHTML = `<img src="${logoUrl}" alt="${config.name || 'Logo'}">`;
+        };
+        testImg.src = logoUrl;
+      }
+
+      return config;
+    }
+
+    /**
+     * 智能分发与 UI 视觉排版自适应
+     */
+    async function executeDispatch() {
+      const statusText = document.getElementById('statusText');
+      const statusSpinner = document.getElementById('statusSpinner');
+      const statusBadge = document.getElementById('statusBadge');
+      const wechatMask = document.getElementById('wechatMask');
+      const btnApple = document.getElementById('btnApple');
+      const btnGoogle = document.getElementById('btnGoogle');
+      const btnAndroid = document.getElementById('btnAndroid');
+      const downloadActions = document.getElementById('downloadActions');
+
+      // 1. 微信/QQ：蒙层引导，但仍拉配置刷新名称（修「示例应用」）
       if (isWechatOrQQ()) {
         wechatMask.style.display = 'block';
-        statusText.innerText = '请点击右上角，在系统浏览器中打开';
+        statusText.innerText = '请在系统浏览器中打开';
+        if (statusSpinner) statusSpinner.style.display = 'none';
+        await applyConfigMeta();
+        return;
+      }
+
+      // 2. 检测环境（IP 探测可能要等一两秒，先提示）
+      statusText.innerText = '正在识别网络环境...';
+      const isMobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+      const isApple = isAppleDevice();
+      /** 出网 IP 是否在国内；挂 VPN 时会判成海外 */
+      const isDomestic = await isDomesticUser();
+
+      // 3. 拉取商店链接与正式名称（只请求一次，后面分支共用）
+      const config = await applyConfigMeta();
+
+      // 4. 根据当前设备对按钮做视觉主次排序与重组
+      if (isApple) {
+        // iOS 访问：App Store 设为第一主要按钮，安卓按钮弱化
+        statusBadge.classList.add('highlight');
+        statusText.innerText = '已识别为苹果 iOS 设备';
+        btnApple.classList.remove('is-secondary');
+        btnGoogle.classList.add('is-secondary');
+        btnAndroid.classList.add('is-secondary');
+        downloadActions.prepend(btnApple);
+
+        // 有效 App Store 链接才自动跳
+        if (config && config.appleUrl && !config.appleUrl.includes('id000000000')) {
+          appleStoreUrl = config.appleUrl;
+          btnApple.href = appleStoreUrl;
+          statusText.innerText = '正在前往 App Store...';
+          setTimeout(() => {
+            window.location.href = appleStoreUrl;
+          }, 600);
+          return;
+        }
         if (statusSpinner) statusSpinner.style.display = 'none';
         return;
       }
 
-      // 2. 环境判定
-      const isMobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
-      const isDomestic = isDomesticUser();
-      const isApple = isAppleDevice();
+      // 海外出网（含国内机挂 VPN）：走 Google Play，不要直下 APK
+      if (!isDomestic) {
+        statusBadge.classList.add('highlight');
+        statusText.innerText = '已识别为海外网络 (Google Play)';
+        btnGoogle.classList.remove('is-secondary');
+        btnApple.classList.add('is-secondary');
+        btnAndroid.classList.add('is-secondary');
+        downloadActions.prepend(btnGoogle);
 
-      // 3. 【极速通道】国内安卓用户且已传入 apk 路径：
-      // 无须等待 config.json 异步查找，0 毫秒立即拉起该 APK 文件下载！
-      if (!isApple && isDomestic && apkParam) {
-        statusText.innerText = '识别为国内安卓设备，正在开始下载本安装包...';
+        if (config && config.googleUrl && !config.googleUrl.includes('com.example.app')) {
+          googlePlayUrl = config.googleUrl;
+          btnGoogle.href = googlePlayUrl;
+          statusText.innerText = '正在前往 Google Play...';
+          setTimeout(() => {
+            window.location.href = googlePlayUrl;
+          }, 600);
+          return;
+        }
+        // 没配 googleUrl 时停在页面，让用户自己点
+        if (statusSpinner) statusSpinner.style.display = 'none';
+        statusText.innerText = '海外网络：请前往 Google Play 获取';
+        return;
+      }
+
+      // 国内安卓：APK 官方下载置顶并自动开始
+      statusBadge.classList.add('highlight');
+      statusText.innerText = '已识别为国内安卓设备';
+      btnAndroid.classList.remove('is-secondary');
+      btnApple.classList.add('is-secondary');
+      btnGoogle.classList.add('is-secondary');
+      downloadActions.prepend(btnAndroid);
+
+      if (domesticApkUrl && !domesticApkUrl.includes('your-bucket')) {
+        // 电脑端不自动下，避免误下
         if (!isMobile) {
-          statusText.innerText += '（电脑端预览已暂停自动下载，可手动点击下方绿色按钮）';
+          statusText.innerText = '国内安卓官方安装包（电脑端可直接点击下方下载）';
           if (statusSpinner) statusSpinner.style.display = 'none';
           return;
         }
+        statusText.innerText = '正在为您启动高速下载...';
         setTimeout(() => {
           window.location.href = domesticApkUrl;
         }, 500);
         return;
       }
 
-      // 4. 苹果设备或海外安卓：需要递归寻找上层目录的 config.json 获取应用商店链接与 Logo
-      if (apkParam) {
-        statusText.innerText = '正在自动匹配对应应用商店配置...';
-        const config = await findConfigRecursively(apkParam);
-        if (config) {
-          if (config.name && appNameEl) {
-            appNameEl.innerText = config.name;
-          }
-          if (config.appleUrl) {
-            appleStoreUrl = config.appleUrl;
-            if (btnApple) btnApple.href = appleStoreUrl;
-          }
-          if (config.googleUrl) {
-            googlePlayUrl = config.googleUrl;
-            if (btnGoogle) btnGoogle.href = googlePlayUrl;
-          }
-
-          // 动态尝试加载 App 图标（优先读取 config.logo，没有则探测同目录下的 logo.png）
-          const appLogoEl = document.getElementById('appLogo');
-          if (appLogoEl) {
-            const logoTarget = config.logo || 'logo.png';
-            const origin = window.location.origin.startsWith('http') ? window.location.origin : 'https://dl.yepaiapp.com';
-            const logoUrl = (logoTarget.startsWith('http://') || logoTarget.startsWith('https://'))
-              ? logoTarget
-              : `${origin}/${config._dir || ''}${logoTarget}`.replace(/([^:]\/)\/+/g, '$1');
-            const testImg = new Image();
-            testImg.onload = () => {
-              appLogoEl.innerHTML = `<img src="${logoUrl}" alt="${config.name || 'Logo'}">`;
-            };
-            testImg.src = logoUrl;
-          }
-        }
-      }
-
-      // 5. 苹果设备跳转
-      if (isApple) {
-        statusText.innerText = '识别为苹果 iOS 设备';
-        if (appleStoreUrl.includes('id000000000')) {
-          statusText.innerText += '（未在目录中检测到 App Store 链接，请在上层目录配置 config.json）';
-          if (statusSpinner) statusSpinner.style.display = 'none';
-          return;
-        }
-        setTimeout(() => {
-          window.location.href = appleStoreUrl;
-        }, 600);
-        return;
-      }
-
-      // 6. 安卓海外环境跳转 Google Play
-      if (!isDomestic) {
-        statusText.innerText = '识别为海外环境（Google Play）';
-        if (googlePlayUrl.includes('com.example.app')) {
-          statusText.innerText += '（未在目录中检测到 Google Play 链接，请在上层目录配置 config.json）';
-          if (statusSpinner) statusSpinner.style.display = 'none';
-          return;
-        }
-        setTimeout(() => {
-          window.location.href = googlePlayUrl;
-        }, 600);
-        return;
-      }
-
-      // 7. 国内安卓常规兜底
-      statusText.innerText = '识别为国内环境（安卓/通用）';
-      if (domesticApkUrl.includes('your-bucket')) {
-        statusText.innerText += ' -> 目标链接为占位符，请带上 ?apk= 参数';
-        if (statusSpinner) statusSpinner.style.display = 'none';
-        return;
-      }
-      if (!isMobile) {
-        statusText.innerText += ' -> 电脑端预览已暂停自动下载，可手动点击下方按钮';
-        if (statusSpinner) statusSpinner.style.display = 'none';
-        return;
-      }
-      setTimeout(() => {
-        window.location.href = domesticApkUrl;
-      }, 600);
+      if (statusSpinner) statusSpinner.style.display = 'none';
+      statusText.innerText = '请选择对应版本下载';
     }
 
     // 页面加载完成后立即执行分发

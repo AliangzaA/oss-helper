@@ -6,8 +6,132 @@ const persist = require('./persist')
 const oss = require('./oss')
 const updater = require('./updater')
 
-/** 选中还没传完的本地文件，页面只拿 id，避免随便传一个路径就能读盘 */
+/** 选中还没传完的本地文件，页面只拿 id；值是 { path, rel } */
 const pending = new Map()
+
+/**
+ * 把一个本地文件或文件夹展开成待传条目（文件夹保留相对路径）
+ * @param {string} rootPath
+ * @returns {Array<{ path: string, rel: string, size: number }>}
+ */
+function expandLocal(rootPath) {
+  /** 结果列表 */
+  const out = []
+
+  /** 根路径元数据 */
+  let st
+  try {
+    st = fs.statSync(rootPath)
+  } catch {
+    return out
+  }
+
+  // 单个文件：相对名就是文件名
+  if (st.isFile()) {
+    out.push({
+      path: rootPath,
+      rel: path.basename(rootPath),
+      size: st.size
+    })
+    return out
+  }
+
+  // 不是目录也不是文件就跳过
+  if (!st.isDirectory()) {
+    return out
+  }
+
+  /** 文件夹顶层名，进 OSS 后作为这一层目录 */
+  const baseName = path.basename(rootPath)
+
+  /**
+   * 递归读目录
+   * @param {string} dir
+   * @param {string} relDir - 相对路径，用 /
+   */
+  function walk(dir, relDir) {
+    /** 这一层名字 */
+    let names
+    try {
+      names = fs.readdirSync(dir)
+    } catch {
+      return
+    }
+
+    for (const name of names) {
+      // 系统垃圾文件不传
+      if (name === '.DS_Store' || name === 'Thumbs.db' || name === 'desktop.ini') {
+        continue
+      }
+
+      /** 绝对路径 */
+      const full = path.join(dir, name)
+      /** OSS 对象相对键 */
+      const rel = `${relDir}/${name}`.replace(/\\/g, '/')
+      /** 子项元数据 */
+      let child
+      try {
+        child = fs.statSync(full)
+      } catch {
+        continue
+      }
+
+      // 子目录继续往下走
+      if (child.isDirectory()) {
+        walk(full, rel)
+        continue
+      }
+
+      // 普通文件收进列表
+      if (child.isFile()) {
+        out.push({ path: full, rel, size: child.size })
+      }
+    }
+  }
+
+  walk(rootPath, baseName)
+  return out
+}
+
+/**
+ * 把多条本地路径登记进 pending，返回给页面展示
+ * @param {string[]} roots
+ * @returns {{ ok: boolean, error?: string, files: Array<{ id: string, name: string, size: number }> }}
+ */
+function registerLocals(roots) {
+  /** 展开后的全部文件 */
+  const expanded = []
+
+  for (const root of roots || []) {
+    // 空路径跳过
+    if (!root) {
+      continue
+    }
+    expanded.push(...expandLocal(root))
+  }
+
+  // 一次拖太多容易卡死窗口
+  if (expanded.length > 800) {
+    return { ok: false, error: '一次最多上传 800 个文件，请拆开再传', files: [] }
+  }
+
+  /** 交给页面的条目 */
+  const files = []
+
+  for (const item of expanded) {
+    /** 页面用来指回这条路径的 id */
+    const id = `up-${Date.now()}-${pending.size}`
+    pending.set(id, { path: item.path, rel: item.rel })
+    files.push({
+      id,
+      /** 列表上显示相对路径，文件夹里的文件才看得出结构 */
+      name: item.rel,
+      size: item.size
+    })
+  }
+
+  return { ok: true, files }
+}
 
 /** 主窗口引用，避免被垃圾回收提前关掉 */
 let win = null
@@ -167,7 +291,7 @@ function bindStore() {
   ipcMain.handle('oss:pick', async (event) => {
     /** 挂到发起请求的窗口上 */
     const win = BrowserWindow.fromWebContents(event.sender)
-    /** 文件框参数，允许多选 */
+    /** 文件框参数，允许多选文件 */
     const options = {
       title: '选择要上传的文件',
       properties: ['openFile', 'multiSelections']
@@ -182,36 +306,51 @@ function bindStore() {
       return { ok: true, canceled: true, files: [] }
     }
 
-    /** 交给页面展示的条目，路径留在主进程 */
-    const files = []
+    /** 登记进 pending */
+    const res = registerLocals(picked.filePaths)
+    // 超限等错误也交回页面
+    if (!res.ok) {
+      return { ok: false, canceled: false, error: res.error || '选择失败', files: [] }
+    }
+    return { ok: true, canceled: false, files: res.files }
+  })
+  ipcMain.handle('oss:pickFolder', async (event) => {
+    /** 挂到发起请求的窗口上 */
+    const win = BrowserWindow.fromWebContents(event.sender)
+    /** 文件夹框，可多选 */
+    const options = {
+      title: '选择要上传的文件夹',
+      properties: ['openDirectory', 'multiSelections']
+    }
+    /** 用户选的本地目录 */
+    const picked = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
 
-    for (const filePath of picked.filePaths) {
-      // 空路径跳过
-      if (!filePath) {
-        continue
-      }
-
-      /** 页面用来指回这条路径的 id */
-      const id = `up-${Date.now()}-${pending.size}`
-      /** 列表上要显示的大小，读不到就当 0 */
-      let size = 0
-
-      try {
-        size = fs.statSync(filePath).size
-      } catch {
-        // 文件刚被挪走时仍让用户看见名字，真正上传时再报错
-        size = 0
-      }
-
-      pending.set(id, filePath)
-      files.push({
-        id,
-        name: path.basename(filePath),
-        size
-      })
+    // 取消
+    if (picked.canceled || !picked.filePaths.length) {
+      return { ok: true, canceled: true, files: [] }
     }
 
-    return { ok: true, canceled: false, files }
+    /** 展开目录里所有文件并登记 */
+    const res = registerLocals(picked.filePaths)
+    if (!res.ok) {
+      return { ok: false, canceled: false, error: res.error || '选择失败', files: [] }
+    }
+    // 空文件夹
+    if (!res.files.length) {
+      return { ok: false, canceled: false, error: '文件夹是空的', files: [] }
+    }
+    return { ok: true, canceled: false, files: res.files }
+  })
+  ipcMain.handle('oss:addFiles', async (_event, filePaths) => {
+    /** 拖拽进来的路径，文件和文件夹都支持 */
+    const res = registerLocals(Array.isArray(filePaths) ? filePaths : [])
+    // 超限等
+    if (!res.ok) {
+      return { ok: false, error: res.error || '添加失败', files: [] }
+    }
+    return { ok: true, files: res.files }
   })
   ipcMain.handle('oss:forget', (_event, ids) => {
     /** 页面关掉弹窗或拿掉的那些 id */
@@ -230,29 +369,34 @@ function bindStore() {
 
     /** 弹窗里还留着的文件 id */
     const ids = Array.isArray(payload && payload.fileIds) ? payload.fileIds : []
-    /** 主进程里对应的本地路径，不采用页面传来的路径 */
-    const paths = []
+    /** 主进程里对应的本地路径 + 相对键 */
+    const items = []
 
     for (const id of ids) {
-      /** 当初选文件时记下的路径 */
-      const filePath = pending.get(id)
+      /** 当初选文件时记下的条目 */
+      const entry = pending.get(id)
 
       // 弹窗关过或 id 对不上，就不能传
-      if (!filePath) {
+      if (!entry) {
         return { ok: false, error: '有文件已失效，请重新选择', uploaded: 0 }
       }
 
-      paths.push(filePath)
+      // 兼容旧数据：曾经直接存字符串路径
+      if (typeof entry === 'string') {
+        items.push({ path: entry, rel: path.basename(entry) })
+      } else {
+        items.push({ path: entry.path, rel: entry.rel })
+      }
     }
 
     // 一个都没留
-    if (!paths.length) {
+    if (!items.length) {
       return { ok: false, error: '请先添加文件', uploaded: 0 }
     }
 
     try {
       /** 传到当前目录，进度按 id 推回页面 */
-      const data = await oss.upload(hit, payload && payload.place, paths, (index, percent) => {
+      const data = await oss.upload(hit, payload && payload.place, items, (index, percent) => {
         // 窗口已经关了就别再推
         if (event.sender.isDestroyed()) {
           return
