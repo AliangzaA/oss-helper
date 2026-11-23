@@ -1841,18 +1841,106 @@ const codeNote = computed(() => {
   return ''
 })
 
+/** 对象所在目录，带结尾斜杠；直接放在桶根时是空串 */
+function folderOf(key) {
+  /** 完整 key */
+  const text = String(key || '')
+  /** 最后一层斜杠 */
+  const at = text.lastIndexOf('/')
+  return at < 0 ? '' : text.slice(0, at + 1)
+}
+
+/** 这一层列表里有没有配置文件 */
+function hasConfigFile(items) {
+  return (items || []).some(
+    (row) => row && row.type === 'file' && String(row.name || '').toLowerCase() === 'config.json'
+  )
+}
+
+/**
+ * 安装包所在目录是否已有 config.json。
+ * 正在列这一层时直接看当前列表；搜索结果里对不上，就再向桶要这一层。
+ * @returns {Promise<boolean>} 没有或没查清都是 false，原因写在 findError
+ */
+async function apkDirHasConfig(item) {
+  /** 和这个安装包放在一起的目录 */
+  const dir = folderOf(item.key)
+  /** 当前列表就是这一层，而且没有在搜别的名字 */
+  const browsingHere = !String(keyword.value || '').trim() && String(place.value || '') === dir
+
+  // 这一层已经列全，不用再请求
+  if (browsingHere && !truncated.value) {
+    return hasConfigFile(hits.value)
+  }
+
+  // 没列全，但配置文件已经出现在当前列表里
+  if (browsingHere && hasConfigFile(hits.value)) {
+    return true
+  }
+
+  // 浏览器预览没法再问桶
+  if (!window.ossApi || !current.value) {
+    findError.value = '请在应用窗口里生成二维码'
+    return false
+  }
+
+  try {
+    /** 只列安装包所在的这一层 */
+    const res = await window.ossApi.find({
+      id: current.value.id,
+      place: dir,
+      keyword: ''
+    })
+
+    if (!res.ok) {
+      findError.value = res.error || '检查配置文件失败'
+      return false
+    }
+
+    if (hasConfigFile(res.items)) {
+      return true
+    }
+
+    // 文件太多没列完，不能把「没看到」当成「没有」
+    if (res.truncated) {
+      findError.value = '这个目录文件太多，没能确认有没有 config.json，请先在这一层找到配置文件'
+      return false
+    }
+  } catch (err) {
+    findError.value = err && err.message ? err.message : '检查配置文件失败'
+    return false
+  }
+
+  return false
+}
+
 /** 打开二维码，安装包默认优先使用智能分流码 */
-function askCode(item) {
+async function askCode(item) {
   // 目录没有公开下载地址
   if (!item || item.type === 'folder') {
     return
   }
 
+  /** 安装包的下载页要读同目录的 config.json */
+  const apk = String(item.name || '').toLowerCase().endsWith('.apk')
+
+  // 没有配置文件就不要生成，避免扫出来的下载页缺应用信息
+  if (apk) {
+    findError.value = ''
+    /** 同一目录是否已有配置文件 */
+    const ready = await apkDirHasConfig(item)
+
+    if (!ready) {
+      if (!findError.value) {
+        findError.value = '这个目录还没有 config.json，请先点「+ 配置文件」，再生成二维码'
+      }
+      return
+    }
+  }
+
   codeItem.value = item
   codeCopied.value = false
   codeSaved.value = false
-  /** 是不是安装包 */
-  const apk = String(item.name || '').toLowerCase().endsWith('.apk')
 
   // 安装包且配了自定义域名，默认优先生成智能分流码
   if (apk && String(current.value?.domain || '').trim()) {
