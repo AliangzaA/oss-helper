@@ -361,6 +361,76 @@
       gap: 6px;
     }
 
+    /* 国内安卓下载后的安装引导，配色沿用本页，不换成深色皮肤 */
+    .install-guide {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      background: rgba(17, 24, 39, 0.45);
+      padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+      align-items: center;
+      justify-content: center;
+    }
+
+    .install-guide-card {
+      width: 100%;
+      max-width: 400px;
+      background: #ffffff;
+      border-radius: 24px;
+      padding: 22px 20px 14px;
+      text-align: left;
+      box-shadow: 0 20px 50px -12px rgba(0, 20, 60, 0.28), 0 0 1px 1px rgba(0, 0, 0, 0.04);
+    }
+
+    .install-guide-card h3 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: var(--text-main);
+      margin-bottom: 10px;
+    }
+
+    .install-guide-card p {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text-sub);
+      margin-bottom: 18px;
+    }
+
+    .install-guide-primary,
+    .install-guide-secondary {
+      display: block;
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      font-family: inherit;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 14px 16px;
+    }
+
+    .install-guide-primary {
+      font-weight: 600;
+      color: #ffffff;
+      background: var(--primary-gradient);
+      box-shadow: 0 8px 20px rgba(0, 113, 227, 0.28);
+      margin-bottom: 8px;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    .install-guide-secondary {
+      font-weight: 500;
+      color: #6e6e73;
+      background: #f2f2f7;
+    }
+
+    .install-guide-primary:active,
+    .install-guide-secondary:active {
+      transform: scale(0.98);
+    }
+
     /* 微信/QQ 内打开指引蒙层 */
     .wechat-mask {
       display: none;
@@ -513,6 +583,16 @@
         <h3>微信内暂不支持直接下载</h3>
         <p>请点击右上角 <strong>•••</strong> 菜单<br>选择 <strong>“在浏览器打开”</strong> 即可自动开始下载安装。</p>
       </div>
+    </div>
+  </div>
+
+  <!-- 国内安卓：安装包开始下载后的引导。苹果和电脑不打开这层 -->
+  <div class="install-guide" id="installGuide">
+    <div class="install-guide-card" role="dialog" aria-modal="true" aria-labelledby="installGuideTitle">
+      <h3 id="installGuideTitle">安装包正在下载</h3>
+      <p>下载完成后，从屏幕顶部下拉通知栏，点这个安装包，再点「安装」。如果问是否允许安装未知应用，点允许。</p>
+      <a class="install-guide-primary" id="btnOpenDownloads" href="intent:#Intent;action=android.intent.action.VIEW_DOWNLOADS;end">打开下载列表去安装</a>
+      <button type="button" class="install-guide-secondary" id="btnInstallKnown">我知道了</button>
     </div>
   </div>
 
@@ -708,6 +788,11 @@
       return /micromessenger/i.test(ua) || /qq\//i.test(ua);
     }
 
+    /** 安卓手机或平板，不含苹果 */
+    function isAndroidDevice() {
+      return /android/i.test(navigator.userAgent || '');
+    }
+
     /** 判断是否为苹果 iOS 设备 */
     function isAppleDevice() {
       const ua = navigator.userAgent.toLowerCase();
@@ -812,6 +897,9 @@
         btnGoogle.href = googlePlayUrl;
       }
 
+      // 配置里写了默认 APK，就下这个文件。二维码里的 apk 只用来找到这份配置
+      applyDefaultApk(config);
+
       // URL 已带二维码同款 logo 时不要覆盖
       if (!logoLocked && !logoParam && appLogoEl) {
         const logoTarget = config.logo || 'logo.png';
@@ -829,6 +917,156 @@
       }
 
       return config;
+    }
+
+    /**
+     * 把 config.json 的 apk 解析成下载地址。
+     * 只写文件名时，跟这份 config.json 放在同一目录。
+     * @param {object} config
+     */
+    function applyDefaultApk(config) {
+      const named = String((config && config.apk) || '').trim();
+      if (!named) return;
+
+      let next = '';
+      if (named.startsWith('http://') || named.startsWith('https://')) {
+        next = named;
+      } else if (named.includes('/')) {
+        next = `${origin}/${named.replace(/^\/+/, '')}`;
+      } else {
+        next = `${origin}/${config._dir || ''}${named}`;
+      }
+
+      next = next.replace(/([^:]\/)\/+/g, '$1');
+      domesticApkUrl = next;
+      const btnAndroid = document.getElementById('btnAndroid');
+      if (btnAndroid) btnAndroid.href = domesticApkUrl;
+    }
+
+    /** 打开或关掉安装引导，失败时也留在这一层，不跳空白页 */
+    function showInstallGuide() {
+      const guide = document.getElementById('installGuide');
+      if (guide) guide.style.display = 'flex';
+    }
+
+    function hideInstallGuide() {
+      const guide = document.getElementById('installGuide');
+      if (guide) guide.style.display = 'none';
+    }
+
+    /**
+     * 在隐藏框架里开始下载，当前页不跳走，安装引导才能留在屏幕上
+     */
+    function triggerApkDownload() {
+      if (!domesticApkUrl) return;
+
+      let frame = document.getElementById('apkDownloadFrame');
+      if (!frame) {
+        frame = document.createElement('iframe');
+        frame.id = 'apkDownloadFrame';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.cssText = 'position:absolute;width:0;height:0;border:0;visibility:hidden';
+        document.body.appendChild(frame);
+      }
+
+      // 先清空再赋值，重复点击「国内安卓」时也会再次下载
+      frame.src = 'about:blank';
+      const apkUrl = domesticApkUrl;
+      setTimeout(() => {
+        const current = document.getElementById('apkDownloadFrame');
+        if (current) current.src = apkUrl;
+      }, 30);
+    }
+
+    /**
+     * 系统下载列表的 intent。第一条永远是 VIEW_DOWNLOADS，后面才是厂商兜底
+     * @returns {string[]}
+     */
+    function downloadListIntents() {
+      const ua = (navigator.userAgent || '').toLowerCase();
+      const viewDownloads = 'intent:#Intent;action=android.intent.action.VIEW_DOWNLOADS;end';
+      const urls = [viewDownloads];
+
+      // 小米 / 红米：系统下载列表
+      if (/miui|xiaomi|redmi|poco/.test(ua)) {
+        urls.push('intent:#Intent;action=android.intent.action.VIEW_DOWNLOADS;package=com.android.providers.downloads.ui;component=com.android.providers.downloads.ui/.DownloadList;end');
+      }
+
+      // 华为 / 荣耀：系统下载管理
+      if (/huawei|honor|harmonyos|emui/.test(ua)) {
+        urls.push('intent:#Intent;action=android.intent.action.VIEW_DOWNLOADS;package=com.android.providers.downloads.ui;end');
+      }
+
+      // 通用下载管理器界面
+      urls.push('intent:#Intent;action=android.intent.action.VIEW_DOWNLOADS;package=com.android.providers.downloads.ui;component=com.android.providers.downloads.ui/com.android.providers.downloads.ui.DownloadList;end');
+      return urls.filter((url, index) => urls.indexOf(url) === index);
+    }
+
+    /**
+     * 兜底 intent 放进隐藏框架。打不开时空白留在框架里，当前对话框还在
+     * @param {string} url
+     */
+    function launchIntentInFrame(url) {
+      try {
+        const frame = document.createElement('iframe');
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.cssText = 'position:absolute;width:0;height:0;border:0;opacity:0';
+        frame.src = url;
+        document.body.appendChild(frame);
+        setTimeout(() => {
+          if (frame.parentNode) frame.parentNode.removeChild(frame);
+        }, 1800);
+      } catch (err) {
+        // 这一条失败就停，不改当前页地址
+      }
+    }
+
+    /**
+     * 打开下载列表。安卓上用主框架发出 VIEW_DOWNLOADS，系统才会进入下载列表。
+     * 不写 location，也不带浏览器回退地址，打不开时对话框还在，不会白屏。
+     * 小米、华为和通用下载管理器放进隐藏框架做兜底。
+     */
+    function openDownloadList(event) {
+      if (event) event.preventDefault();
+      const urls = downloadListIntents();
+      if (!urls.length) return;
+
+      if (isAndroidDevice()) {
+        try {
+          const link = document.createElement('a');
+          link.href = urls[0];
+          link.style.display = 'none';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => link.remove(), 1000);
+        } catch (err) {
+          launchIntentInFrame(urls[0]);
+        }
+      } else {
+        launchIntentInFrame(urls[0]);
+      }
+
+      urls.slice(1).forEach((url, index) => {
+        setTimeout(() => {
+          // 标准动作已经把浏览器切到后台时，不再打开别的界面
+          if (document.visibilityState === 'hidden') return;
+          launchIntentInFrame(url);
+        }, 700 * (index + 1));
+      });
+    }
+
+    /** 自动下载一开始就弹安装引导，不检查下载是否成功 */
+    function beginDomesticInstall() {
+      if (!domesticApkUrl || domesticApkUrl.includes('your-bucket')) return;
+      const statusText = document.getElementById('statusText');
+      const statusSpinner = document.getElementById('statusSpinner');
+      if (statusText) statusText.innerText = '安装包正在下载';
+      if (statusSpinner) statusSpinner.style.display = 'none';
+      showInstallGuide();
+      // 先让弹层画出来，再拉下载。不再按机型拆开，也不看下载结果
+      setTimeout(() => {
+        window.location.href = domesticApkUrl;
+      }, 300);
     }
 
     /**
@@ -920,21 +1158,40 @@
       downloadActions.prepend(btnAndroid);
 
       if (domesticApkUrl && !domesticApkUrl.includes('your-bucket')) {
-        // 电脑端不自动下，避免误下
+        // 电脑端不自动下，也不弹安装引导
         if (!isMobile) {
           statusText.innerText = '国内安卓官方安装包（电脑端可直接点击下方下载）';
           if (statusSpinner) statusSpinner.style.display = 'none';
           return;
         }
-        statusText.innerText = '正在为您启动高速下载...';
-        setTimeout(() => {
-          window.location.href = domesticApkUrl;
-        }, 500);
+        // 手机上只要自动下载，立刻弹。不再区分具体机型
+        beginDomesticInstall();
         return;
       }
 
       if (statusSpinner) statusSpinner.style.display = 'none';
       statusText.innerText = '请选择对应版本下载';
+    }
+
+    // 手机上点「直接下载安装包」也先弹引导，再开始下载
+    const btnAndroidEl = document.getElementById('btnAndroid');
+    if (btnAndroidEl) {
+      btnAndroidEl.addEventListener('click', (event) => {
+        const mobile = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent || '');
+        if (!mobile || isAppleDevice() || isWechatOrQQ()) return;
+        event.preventDefault();
+        beginDomesticInstall();
+      });
+    }
+
+    const btnOpenDownloads = document.getElementById('btnOpenDownloads');
+    if (btnOpenDownloads) {
+      btnOpenDownloads.addEventListener('click', openDownloadList);
+    }
+
+    const btnInstallKnown = document.getElementById('btnInstallKnown');
+    if (btnInstallKnown) {
+      btnInstallKnown.addEventListener('click', hideInstallGuide);
     }
 
     // 页面加载完成后立即执行分发
