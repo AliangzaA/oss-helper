@@ -140,9 +140,12 @@ interface Window {
         body: string
         url: string
         publishedAt?: string
+        canInstall?: boolean
       } | null
       error?: string
     }>
+    install: () => Promise<{ ok: boolean; error?: string; opened?: boolean }>
+    onProgress: (cb: (data: { percent: number }) => void) => () => void
     openUrl: (url: string) => Promise<void>
   }
 }

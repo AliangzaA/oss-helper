@@ -238,8 +238,15 @@ function bindStore() {
     }
   })
 
-  // 检查更新与唤起外部下载
+  // 检查更新、下载 Windows 安装包，或打开发布页
   ipcMain.handle('updater:check', () => updater.checkForUpdates())
+  ipcMain.handle('updater:install', (event) => {
+    return updater.installUpdate((percent) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('updater:progress', { percent })
+      }
+    })
+  })
   ipcMain.handle('updater:openUrl', (_event, url) => {
     // 只允许打开 http 和 https 链接，防止安全隐患
     if (url && (String(url).startsWith('https://') || String(url).startsWith('http://'))) {

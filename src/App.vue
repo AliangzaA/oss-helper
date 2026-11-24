@@ -94,11 +94,15 @@
                 <div class="notes-title">更新说明：</div>
                 <div class="notes-content">{{ updateInfo.body }}</div>
               </div>
-              <p v-else class="card-hint">发现新版本发布，是否立即前往下载？</p>
+              <p v-if="updateInfo.canInstall" class="card-hint">下载完成后会打开安装程序，并退出当前窗口。</p>
+              <p v-else-if="!updateInfo.body" class="card-hint">发现新版本，是否前往下载页面？</p>
+              <p v-if="updateError" class="err card-err">{{ updateError }}</p>
             </div>
             <div class="card-foot">
-              <button class="btn-cancel" type="button" @click="showUpdateCard = false">暂不</button>
-              <button class="btn-update" type="button" @click="onGoUpdate">立即更新</button>
+              <button class="btn-cancel" type="button" :disabled="installingUpdate" @click="showUpdateCard = false">暂不</button>
+              <button class="btn-update" type="button" :disabled="installingUpdate" @click="onGoUpdate">
+                {{ updateButtonText }}
+              </button>
             </div>
           </div>
         </transition>
@@ -476,6 +480,22 @@
         </template>
       </n-modal>
 
+      <!-- 安装包同目录没有 config.json 时拦住，不打开二维码 -->
+      <n-modal
+        v-model:show="configNeedShow"
+        preset="card"
+        :title="configNeedCreate ? '还没有配置文件' : '暂时不能生成二维码'"
+        style="width: 420px"
+      >
+        <p class="hint">{{ configNeedText }}</p>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="configNeedShow = false">{{ configNeedCreate ? '取消' : '知道了' }}</n-button>
+            <n-button v-if="configNeedCreate" type="primary" @click="createMissingConfig">新建配置文件</n-button>
+          </n-space>
+        </template>
+      </n-modal>
+
       <!-- 删除前确认，文件夹会连带里面的文件 -->
       <n-modal v-model:show="dropShow" preset="card" title="删除" style="width: 380px">
         <p class="hint">删除选中的 {{ pickedItems.length }} 项。文件夹会连同里面的文件一起删，不能恢复。</p>
@@ -606,6 +626,23 @@ const currentAppVersion = ref('1.0.0')
 
 /** 正在检查更新的加载中状态 */
 const checkingUpdate = ref(false)
+
+/** 正在下载安装包 */
+const installingUpdate = ref(false)
+
+/** 安装包下载百分比，-1 表示总大小还不知道 */
+const updatePercent = ref(-1)
+
+/** 下载或打开安装包失败时的说明 */
+const updateError = ref('')
+
+/** 更新按钮上的字：下载中显示进度，Windows 以外去网页 */
+const updateButtonText = computed(() => {
+  if (installingUpdate.value) {
+    return updatePercent.value >= 0 ? `正在下载 ${updatePercent.value}%` : '正在下载安装包'
+  }
+  return updateInfo.value?.canInstall ? '立即更新' : '前往下载'
+})
 
 /** 无更新或检测结果的气泡提示文字 */
 const updateTip = ref('')
@@ -754,6 +791,18 @@ const apkOptions = computed(() => {
     .map((item) => ({ label: item.name, value: item.name }))
 })
 
+/** 缺配置文件时的拦截弹窗 */
+const configNeedShow = ref(false)
+
+/** 拦截弹窗里的说明 */
+const configNeedText = ref('')
+
+/** 这次是「没有文件」，可以接着新建；检查失败时只提示 */
+const configNeedCreate = ref(false)
+
+/** 要新建 config.json 的目录，带结尾斜杠 */
+const configNeedDir = ref('')
+
 /** 二维码弹窗是否打开 */
 const codeShow = ref(false)
 
@@ -810,6 +859,9 @@ let dragDepth = 0
 
 /** 取消进度订阅 */
 let offProgress = null
+
+/** 取消安装包下载进度订阅 */
+let offUpdate = null
 
 /** 结果被截断了 */
 const truncated = ref(false)
@@ -1860,28 +1912,31 @@ function hasConfigFile(items) {
 /**
  * 安装包所在目录是否已有 config.json。
  * 正在列这一层时直接看当前列表；搜索结果里对不上，就再向桶要这一层。
- * @returns {Promise<boolean>} 没有或没查清都是 false，原因写在 findError
+ * @returns {Promise<{ ok: boolean, message: string, canCreate: boolean }>}
  */
 async function apkDirHasConfig(item) {
   /** 和这个安装包放在一起的目录 */
   const dir = folderOf(item.key)
   /** 当前列表就是这一层，而且没有在搜别的名字 */
   const browsingHere = !String(keyword.value || '').trim() && String(place.value || '') === dir
+  /** 没有配置文件时弹窗里的说明 */
+  const missing = `「${showPlace(dir)}」里还没有 config.json。下载页靠它显示应用名称和商店链接，请先在这一层新建，再生成二维码。`
 
   // 这一层已经列全，不用再请求
   if (browsingHere && !truncated.value) {
     return hasConfigFile(hits.value)
+      ? { ok: true, message: '', canCreate: false }
+      : { ok: false, message: missing, canCreate: true }
   }
 
   // 没列全，但配置文件已经出现在当前列表里
   if (browsingHere && hasConfigFile(hits.value)) {
-    return true
+    return { ok: true, message: '', canCreate: false }
   }
 
   // 浏览器预览没法再问桶
   if (!window.ossApi || !current.value) {
-    findError.value = '请在应用窗口里生成二维码'
-    return false
+    return { ok: false, message: '请在应用窗口里生成二维码', canCreate: false }
   }
 
   try {
@@ -1893,25 +1948,38 @@ async function apkDirHasConfig(item) {
     })
 
     if (!res.ok) {
-      findError.value = res.error || '检查配置文件失败'
-      return false
+      return { ok: false, message: res.error || '检查配置文件失败', canCreate: false }
     }
 
     if (hasConfigFile(res.items)) {
-      return true
+      return { ok: true, message: '', canCreate: false }
     }
 
     // 文件太多没列完，不能把「没看到」当成「没有」
     if (res.truncated) {
-      findError.value = '这个目录文件太多，没能确认有没有 config.json，请先在这一层找到配置文件'
-      return false
+      return {
+        ok: false,
+        message: '这个目录文件太多，没能确认有没有 config.json。请先在这一层找到配置文件，再生成二维码。',
+        canCreate: false
+      }
     }
   } catch (err) {
-    findError.value = err && err.message ? err.message : '检查配置文件失败'
-    return false
+    return {
+      ok: false,
+      message: err && err.message ? err.message : '检查配置文件失败',
+      canCreate: false
+    }
   }
 
-  return false
+  return { ok: false, message: missing, canCreate: true }
+}
+
+/** 关掉拦截弹窗，接着在安装包所在目录新建 config.json */
+function createMissingConfig() {
+  /** 弹窗记下的目录 */
+  const dir = configNeedDir.value
+  configNeedShow.value = false
+  openConfigModal(null, dir)
 }
 
 /** 打开二维码，安装包默认优先使用智能分流码 */
@@ -1924,16 +1992,16 @@ async function askCode(item) {
   /** 安装包的下载页要读同目录的 config.json */
   const apk = String(item.name || '').toLowerCase().endsWith('.apk')
 
-  // 没有配置文件就不要生成，避免扫出来的下载页缺应用信息
+  // 没有配置文件就弹窗拦住，不打开二维码
   if (apk) {
-    findError.value = ''
     /** 同一目录是否已有配置文件 */
     const ready = await apkDirHasConfig(item)
 
-    if (!ready) {
-      if (!findError.value) {
-        findError.value = '这个目录还没有 config.json，请先点「+ 配置文件」，再生成二维码'
-      }
+    if (!ready.ok) {
+      configNeedDir.value = folderOf(item.key)
+      configNeedText.value = ready.message
+      configNeedCreate.value = ready.canCreate
+      configNeedShow.value = true
       return
     }
   }
@@ -2163,8 +2231,12 @@ async function saveCode() {
   }
 }
 
-/** 打开配置文件编辑弹窗 */
-async function openConfigModal(item) {
+/**
+ * 打开配置文件编辑弹窗
+ * @param {object|null} item 已有的 config.json；新建时传 null
+ * @param {string} [dir] 新建时写入的目录，不传就用当前所在目录
+ */
+async function openConfigModal(item, dir) {
   // 没选中存储直接返回
   if (!current.value) {
     return
@@ -2176,17 +2248,19 @@ async function openConfigModal(item) {
     return
   }
 
+  /** 新建时的目标目录：弹窗传入的优先，否则是当前所在目录 */
+  const folder = item ? '' : String(dir != null ? dir : place.value || current.value?.prefix || '')
   /** 对象在桶里的完整 key */
-  const key = item ? item.key : `${place.value || current.value.prefix || ''}config.json`
+  const key = item ? item.key : `${folder}config.json`
   configKey.value = key
   configError.value = ''
   configMode.value = 'form'
   configSaving.value = false
 
-  // 从当前目录推测默认应用名称（如 "apk/大湃/" -> "大湃"）
+  // 从目标目录推测默认应用名称（如 "apk/大湃/" -> "大湃"）
   let defaultAppName = ''
-  /** 当前所在路径字符串 */
-  const rawPath = String(place.value || current.value.prefix || '').replace(/\/$/, '')
+  /** 用来取最后一层名字的路径 */
+  const rawPath = String(item ? place.value || current.value.prefix || '' : folder).replace(/\/$/, '')
   /** 分割后的路径段 */
   const parts = rawPath ? rawPath.split('/') : []
   if (parts.length && parts[parts.length - 1]) {
@@ -2647,11 +2721,35 @@ function onDownloadClick() {
 }
 
 /**
- * 点击弹窗的立即更新按钮，调用系统浏览器打开 Release 页面
+ * 点击立即更新。Windows 下载安装包并打开安装程序，其他系统打开发布页。
  */
-function onGoUpdate() {
-  if (updateInfo.value?.url && window.updaterApi) {
-    window.updaterApi.openUrl(updateInfo.value.url)
+async function onGoUpdate() {
+  if (!window.updaterApi || installingUpdate.value) {
+    return
+  }
+
+  // 旧窗口没有下载接口时，仍打开发布页
+  if (!window.updaterApi.install || !updateInfo.value?.canInstall) {
+    if (updateInfo.value?.url) {
+      window.updaterApi.openUrl(updateInfo.value.url)
+    }
+    return
+  }
+
+  installingUpdate.value = true
+  updateError.value = ''
+  updatePercent.value = -1
+
+  try {
+    /** 主进程下载并打开安装包，成功后会退出应用 */
+    const res = await window.updaterApi.install()
+    if (!res || !res.ok) {
+      updateError.value = (res && res.error) || '下载安装包失败'
+      installingUpdate.value = false
+    }
+  } catch (err) {
+    updateError.value = err && err.message ? err.message : '下载安装包失败'
+    installingUpdate.value = false
   }
 }
 
@@ -2908,6 +3006,13 @@ onMounted(async () => {
     offProgress = window.ossApi.onProgress(applyProgress)
   }
 
+  // 安装包下载百分比
+  if (window.updaterApi && window.updaterApi.onProgress) {
+    offUpdate = window.updaterApi.onProgress((data) => {
+      updatePercent.value = data && Number.isFinite(data.percent) ? data.percent : -1
+    })
+  }
+
   // 启动 2 秒后自动静默检测是否有新版本发布
   setTimeout(() => {
     runCheckUpdate(false)
@@ -2938,6 +3043,11 @@ onUnmounted(() => {
   if (offProgress) {
     offProgress()
     offProgress = null
+  }
+
+  if (offUpdate) {
+    offUpdate()
+    offUpdate = null
   }
 
   // 复制提示的计时也清掉
@@ -3244,6 +3354,16 @@ onUnmounted(() => {
 
 .btn-update:hover {
   background: var(--accent-hover);
+}
+
+.card-err {
+  margin: 8px 0 0;
+}
+
+.btn-update:disabled,
+.btn-cancel:disabled {
+  opacity: 0.7;
+  cursor: default;
 }
 
 .btn-update:active {

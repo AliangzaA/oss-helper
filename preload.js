@@ -66,6 +66,15 @@ contextBridge.exposeInMainWorld('ossApi', {
 contextBridge.exposeInMainWorld('updaterApi', {
   /** 检查 GitHub 远程最新版本 */
   check: () => ipcRenderer.invoke('updater:check'),
+  /** Windows 下载安装包并打开；其他系统打开发布页 */
+  install: () => ipcRenderer.invoke('updater:install'),
+  /** 下载进度，返回取消订阅 */
+  onProgress: (cb) => {
+    /** 主进程推过来的百分比 */
+    const handler = (_event, data) => cb(data)
+    ipcRenderer.on('updater:progress', handler)
+    return () => ipcRenderer.removeListener('updater:progress', handler)
+  },
   /** 用系统默认浏览器打开外部下载链接 */
   openUrl: (url) => ipcRenderer.invoke('updater:openUrl', url)
 })
